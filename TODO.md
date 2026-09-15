@@ -1,6 +1,6 @@
-# My project checklist
+# Our project checklist
 
-Last updated: **15 September 2026**. I keep this file as the live checklist and use [the progress report](docs/progress.pdf) for the dated explanation of my methods and findings.
+Last updated: **15 September 2026**. We keep this file as the live checklist and use [the progress report](docs/progress.pdf) for the dated explanation of our methods and findings.
 
 ## Completed
 
@@ -14,10 +14,10 @@ Last updated: **15 September 2026**. I keep this file as the live checklist and 
 - [x] Verify that the unchanged script runs in a clean R session and reproduces all six saved plots.
 - [x] Document the current findings, limitations and unfinished methods.
 
-## My next priorities: Part I
+## Our next priorities: Part I
 
-- [ ] Discuss the 35 missing years, especially 1981–2009, with my group.
-- [ ] Clarify with the lecturer whether the intended trend uses actual calendar time or a rescaled observation index.
+- [ ] Discuss the 35 missing years, especially 1981–2009.
+- [ ] Clarify whether the intended trend uses actual calendar time or a rescaled observation index.
 - [ ] Document that the current ACF and DW use adjacent available observations, not uniformly one-year intervals.
 - [ ] Make missing periods explicit in temperature/residual plots and qualify LOESS across gaps; retain the full supplied sample.
 - [ ] Specify the DW null error model and its assumptions.
@@ -27,7 +27,7 @@ Last updated: **15 September 2026**. I keep this file as the live checklist and 
 - [ ] Report `BP = n * R_squared_aux`, its chi-squared(1) p-value and a qualified interpretation.
 - [ ] Discuss how residual dependence affects the standard BP calibration.
 - [ ] Clarify Question 6: finite-sample simulation requires a specified null distribution; BP is not inherently impossible to calibrate by Monte Carlo.
-- [ ] Write my own integrated assessment of the initial model and explain each diagnostic.
+- [ ] Write our integrated assessment of the initial model and explain each diagnostic.
 - [ ] Keep ordinary OLS significance output separate from validated inference; defer trend-significance conclusions as required.
 
 ## Part II: structural change and bootstrap inference
@@ -49,11 +49,11 @@ Last updated: **15 September 2026**. I keep this file as the live checklist and 
 - [ ] Vary at least two of the additional scenario dimensions in the handout.
 - [ ] Compare at least three distinct bootstrap procedures, covering independence, dependence and heteroskedasticity where applicable.
 - [ ] Plan at least **1,000 Monte Carlo replications per configuration** and **499 bootstrap replications within each**, or document computational constraints.
-- [ ] Set/report seeds, measure rejection rates for size and power, and explain what the comparison teaches me.
+- [ ] Set/report seeds, measure rejection rates for size and power, and explain what the comparison teaches us.
 
 ## Reproducibility and group deliverables
 
-- [ ] Add explicit printing if I want the ggplots to display reliably through `source()`.
+- [ ] Add explicit printing if we want the ggplots to display reliably through `source()`.
 - [ ] Refresh `docs/current-output.txt`, figures and reported numbers together after substantive changes.
 - [ ] Maintain consistent units, informative captions and clear distinctions between estimates, visual indications and formal tests.
 - [ ] Keep the report within **15 main-text pages** and prepare the **10-minute group presentation**.
@@ -66,4 +66,4 @@ Last updated: **15 September 2026**. I keep this file as the live checklist and 
 
 ## Update log
 
-- **15 September 2026:** I documented the existing Part I script and six plots. The initial model and observed DW are implemented; MC calibration, BP, structural-change inference and the simulation study remain open.
+- **15 September 2026:** We documented the existing Part I script and six plots. The initial model and observed DW are implemented; MC calibration, BP, structural-change inference and the simulation study remain open.

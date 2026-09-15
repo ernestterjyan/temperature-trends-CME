@@ -1,14 +1,14 @@
 # Temperature trends in Geneva
 
-I am investigating long-run temperature patterns in Geneva for **Computational Methods in Econometrics** at Vrije Universiteit Amsterdam. My starting question is whether a simple linear trend adequately describes the station record, and what residual dependence, changing variance and possible structural change imply for inference.
+We are investigating long-run temperature patterns in Geneva for **Computational Methods in Econometrics** at Vrije Universiteit Amsterdam. Our starting question is whether a simple linear trend adequately describes the station record, and what residual dependence, changing variance and possible structural change imply for inference.
 
-I use **Station 08**, a supplied series of 226 annual mean temperatures in degrees Celsius, spanning **1753–2013**. The metadata identifies the source as NOAA NCEI's GHCN Monthly Temperature Version 4, QCF adjusted series. An annual mean requires at least ten valid monthly observations.
+We use **Station 08**, a supplied series of 226 annual mean temperatures in degrees Celsius, spanning **1753–2013**. The metadata identifies the source as NOAA NCEI's GHCN Monthly Temperature Version 4, QCF adjusted series. An annual mean requires at least ten valid monthly observations.
 
-## Where I am now
+## Where we are now
 
-**Last documented: 15 September 2026.** I have implemented the initial OLS model, produced all four residual diagnostics, and calculated the observed Durbin–Watson statistic. I have not yet implemented its Monte Carlo test or the Breusch–Pagan test.
+**Last documented: 15 September 2026.** We have implemented the initial OLS model, produced all four residual diagnostics, and calculated the observed Durbin–Watson statistic. We have not yet implemented its Monte Carlo test or the Breusch–Pagan test.
 
-| Completed step | What I have saved |
+| Completed step | What we have saved |
 | --- | --- |
 | Data inspection and preparation | Reading, sorting and complete-case checks in `main.R` |
 | Linear trend estimation | OLS coefficients and model summary |
@@ -16,11 +16,11 @@ I use **Station 08**, a supplied series of 226 annual mean temperatures in degre
 | Residual diagnostics | Residual time plot, ACF, squared residuals with LOESS, normal Q–Q plot |
 | Durbin–Watson calculation | Observed statistic only |
 
-My detailed working record is in **[the progress report](docs/progress.pdf)**, with editable **[LaTeX source](docs/progress.tex)**. I track next steps in **[TODO.md](TODO.md)**.
+Our detailed working record is in **[the progress report](docs/progress.pdf)**, with editable **[LaTeX source](docs/progress.tex)**. We track next steps in **[TODO.md](TODO.md)**.
 
-## My findings so far
+## Our findings so far
 
-I estimate the model with calendar time measured in decades relative to 1900:
+We estimate the model with calendar time measured in decades relative to 1900:
 
 $$
 x_i=\frac{\mathrm{Year}_i-1900}{10},\qquad
@@ -37,38 +37,38 @@ $$
 | Residual standard error | 0.6596 °C |
 | Observed Durbin–Watson statistic | 1.4147 |
 
-These values are reproducible from my current script. The [saved console output](docs/current-output.txt) comes from running it in a clean R session. I read the positive slope as an average upward fitted trend in the supplied record. My residual ACF and DW statistic suggest positive dependence, but I do **not** yet have a Monte Carlo p-value or formal autocorrelation-test conclusion. The squared-residual plot also does not substitute for a completed heteroskedasticity test.
+These values are reproducible from our current script. The [saved console output](docs/current-output.txt) comes from running it in a clean R session. We read the positive slope as an average upward fitted trend in the supplied record. Our residual ACF and DW statistic suggest positive dependence, but we do **not** yet have a Monte Carlo p-value or formal autocorrelation-test conclusion. The squared-residual plot also does not substitute for a completed heteroskedasticity test.
 
 ### The missing-year issue
 
-There are **35 missing calendar years**, including the whole period **1981–2009**. No supplied rows have missing values, so my complete-case filter drops nothing. My time transformation respects elapsed calendar time, while the ACF and DW calculation use consecutive *available observations*. In particular, they treat 1980 and 2010 as adjacent observations.
+There are **35 missing calendar years**, including the whole period **1981–2009**. No supplied rows have missing values, so our complete-case filter drops nothing. Our time transformation respects elapsed calendar time, while the ACF and DW calculation use consecutive *available observations*. In particular, they treat 1980 and 2010 as adjacent observations.
 
-The line joining those dates in my plots is a graphical connection across the gap. I cannot use it as evidence of recorded annual temperature movements in the missing period. I still need to clarify the indexing convention and make these gaps explicit in the figures.
+The line joining those dates in our plots is a graphical connection across the gap. We cannot use it as evidence of recorded annual temperature movements in the missing period. We still need to clarify the indexing convention and make these gaps explicit in the figures.
 
 ## Repository guide
 
 | File | Purpose |
 | --- | --- |
-| [`main.R`](main.R) | My current Part I script; ends after calculating observed DW |
+| [`main.R`](main.R) | Our current Part I script; ends after calculating observed DW |
 | [`Station08.csv`](Station08.csv) | Supplied annual temperature data |
 | [`Station08_metadata.pdf`](Station08_metadata.pdf) | Station details, variable definition and source |
 | [`CMEAssignment2026Handout.pdf`](CMEAssignment2026Handout.pdf) | Assignment requirements |
 | [`Rplots.pdf`](Rplots.pdf) | Six plots generated by the current script |
 | [`docs/current-output.txt`](docs/current-output.txt) | Captured output from a clean-session run |
-| [`docs/progress.pdf`](docs/progress.pdf) | My progress, findings, methods, figures and next steps |
+| [`docs/progress.pdf`](docs/progress.pdf) | Our progress, findings, methods, figures and next steps |
 | [`docs/progress.tex`](docs/progress.tex) | Editable source of the progress report |
 | [`TODO.md`](TODO.md) | Ongoing checklist |
 | [`Makefile`](Makefile) | Commands to run the analysis and rebuild the report |
 
-I have kept the existing R script, data and original PDFs unchanged in this initial repository snapshot. The progress report embeds the pages of `Rplots.pdf` directly, preserving the original figures.
+We have kept the existing R script, data and original PDFs unchanged in this initial repository snapshot. The progress report embeds the pages of `Rplots.pdf` directly, preserving the original figures.
 
-## Reproduce my current work
+## Reproduce our current work
 
-I verified the script with **R 4.6.1** and **ggplot2**. R and ggplot2 are required for the analysis; LaTeX is only needed to rebuild the report.
+We verified the script with **R 4.6.1** and **ggplot2**. R and ggplot2 are required for the analysis; LaTeX is only needed to rebuild the report.
 
 ```sh
-git clone git@github.com:ernestterjyan/temperature-trends.git
-cd temperature-trends
+git clone git@github.com:ernestterjyan/temperature-trends-CME.git
+cd temperature-trends-CME
 ```
 
 If ggplot2 is not installed:
@@ -83,9 +83,9 @@ Run from the repository root so that the relative CSV path resolves correctly:
 Rscript --vanilla main.R > docs/current-output.txt
 ```
 
-This refreshes `Rplots.pdf` and captures the model output. The script begins with `rm(list = ls())`; I use a separate R process so it does not clear an existing interactive workspace. Default `source("main.R")` may omit the bare ggplot expressions from display, so the command above is my verified execution route.
+This refreshes `Rplots.pdf` and captures the model output. The script begins with `rm(list = ls())`; we use a separate R process so it does not clear an existing interactive workspace. Default `source("main.R")` may omit the bare ggplot expressions from display, so the command above is our verified execution route.
 
-Alternatively, I can run `make analysis`. To rebuild the progress report with a LaTeX installation providing `latexmk` and `pdflatex`:
+Alternatively, we can run `make analysis`. To rebuild the progress report with a LaTeX installation providing `latexmk` and `pdflatex`:
 
 ```sh
 make report
@@ -97,7 +97,7 @@ Or directly:
 latexmk -pdf -cd -interaction=nonstopmode -halt-on-error docs/progress.tex
 ```
 
-The report's written numbers and interpretations are a dated snapshot. Rebuilding it updates the embedded plot pages, but I must also update the text and tables when my analysis changes.
+The report's written numbers and interpretations are a dated snapshot. Rebuilding it updates the embedded plot pages, but we must also update the text and tables when our analysis changes.
 
 ## What comes next
 
@@ -106,10 +106,10 @@ The report's written numbers and interpretations are a dated snapshot. Rebuildin
 3. Investigate a continuous broken trend with an unknown break date and bootstrap inference.
 4. Compare bootstrap procedures through the assignment's simulation study.
 
-I have not yet estimated a break date, implemented bootstrap tests or intervals, or run the Part III experiment. I also postpone conclusions about trend significance, as required in Part I.
+We have not yet estimated a break date, implemented bootstrap tests or intervals, or run the Part III experiment. We also postpone conclusions about trend significance, as required in Part I.
 
 ## Sources and acknowledgements
 
 - Supplied Station 08 metadata and assignment handout are included above. Dataset DOI: [10.7289/V5XW4GTH](https://doi.org/10.7289/V5XW4GTH).
-- I use base R and ggplot2. The report records an additional methodological reference for the distinction between Monte Carlo and asymptotic testing.
-- I have used ChatGPT/Codex for initial code suggestions, debugging and drafting repository documentation. My course handout limits AI use to debugging and writing clarity, which I need to account for before any assessed submission. This repository records work in progress.
+- We use base R and ggplot2. The report records an additional methodological reference for the distinction between Monte Carlo and asymptotic testing.
+- We have used ChatGPT/Codex for initial code suggestions, debugging and drafting repository documentation. Our course handout limits AI use to debugging and writing clarity, which we need to account for before any assessed submission. This repository records work in progress.
