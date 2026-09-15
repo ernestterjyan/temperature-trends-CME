@@ -1,0 +1,42 @@
+  Year Temperature
+1 1753    9.540000
+2 1754    9.456667
+3 1755    8.923333
+4 1756    9.073333
+5 1757    8.848333
+6 1758    8.115000
+'data.frame':	226 obs. of  2 variables:
+ $ Year       : int  1753 1754 1755 1756 1757 1758 1759 1760 1761 1762 ...
+ $ Temperature: num  9.54 9.46 8.92 9.07 8.85 ...
+      Year       Temperature    
+ Min.   :1753   Min.   : 7.648  
+ 1st Qu.:1809   1st Qu.: 9.075  
+ Median :1866   Median : 9.510  
+ Mean   :1866   Mean   : 9.503  
+ 3rd Qu.:1922   3rd Qu.: 9.980  
+ Max.   :2013   Max.   :11.730  
+Number of obs. 226 
+First year 1753 
+Last year 2013 
+
+Call:
+lm(formula = Temperature ~ t, data = dat)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.80313 -0.42453  0.04061  0.42563  1.73919 
+
+Coefficients:
+            Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 9.616634   0.049102 195.851  < 2e-16 ***
+t           0.033709   0.006563   5.136 6.09e-07 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.6596 on 224 degrees of freedom
+Multiple R-squared:  0.1054,	Adjusted R-squared:  0.1014 
+F-statistic: 26.38 on 1 and 224 DF,  p-value: 6.086e-07
+
+Estimated intercept 9.616634 C
+Estimated trend 0.03370928 C per decade 
+Observed Durbin-Watson statistic: 1.4147 

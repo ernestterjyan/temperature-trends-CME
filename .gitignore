@@ -1,0 +1,25 @@
+# Local R state
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# macOS metadata
+.DS_Store
+
+# LaTeX build intermediates; keep the report PDF and source
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+
+# Temporary review and build files
+tmp/
