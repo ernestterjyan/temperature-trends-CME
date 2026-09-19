@@ -148,3 +148,65 @@ dw_stat <- function(residuals) {
 d_obs <- dw_stat(dat$residual)
 
 cat("Observed Durbin-Watson statistic:", d_obs, "\n")
+
+# ====================================================================================
+# Two-Sided Monte Carlo Durbin-Watson Test
+# ====================================================================================
+
+set.seed(20260914)
+B <- 9999
+n <- nrow(dat)
+
+# Extract design matrix X and compute residual maker matrix M
+X <- model.matrix(trend_model)
+H <- X %*% solve(t(X) %*% X) %*% t(X)
+M <- diag(n) - H  # Residual maker matrix
+
+d_sim <- numeric(B)
+
+for (i in 1:B) {
+  # Generate standard normal pseudo-errors under the null of no autocorrelation
+  eps_star <- rnorm(n)
+  
+  # Obtain OLS residuals from the pseudo-errors
+  e_star <- M %*% eps_star
+  
+  # Compute simulated Durbin-Watson statistic
+  d_sim[i] <- sum(diff(e_star)^2) / sum(e_star^2)
+}
+
+# Two-sided critical values at significance level alpha = 0.05
+alpha <- 0.05
+crit_lower <- quantile(d_sim, alpha / 2)
+crit_upper <- quantile(d_sim, 1 - alpha / 2)
+
+# Two-sided Monte Carlo p-value calculation
+p_lower <- mean(d_sim <= d_obs)
+p_upper <- mean(d_sim >= d_obs)
+p_val_dw <- 2 * min(p_lower, p_upper, 0.5)
+
+cat("--- Monte Carlo Durbin-Watson Test Results ---\n")
+cat("MC Lower Critical Value (2.5%):", crit_lower, "\n")
+cat("MC Upper Critical Value (97.5%):", crit_upper, "\n")
+cat("Monte Carlo p-value:", p_val_dw, "\n")
+
+
+# ====================================================================================
+# Breusch-Pagan Test for Heteroskedasticity
+# ====================================================================================
+
+# Auxiliary regression: squared residuals on the transformed time trend
+aux_model <- lm(residual_sq ~ t, data = dat)
+summary_aux <- summary(aux_model)
+
+# Compute Breusch-Pagan statistic: BP = n * R^2
+R2_aux <- summary_aux$r.squared
+BP_stat <- n * R2_aux
+
+# Under H0, BP follows an asymptotic chi-squared distribution with 1 degree of freedom
+p_val_bp <- 1 - pchisq(BP_stat, df = 1)
+
+cat("\n--- Breusch-Pagan Test Results ---\n")
+cat("Breusch-Pagan Statistic (BP):", BP_stat, "\n")
+cat("Degrees of freedom:", 1, "\n")
+cat("BP p-value:", p_val_bp, "\n")
