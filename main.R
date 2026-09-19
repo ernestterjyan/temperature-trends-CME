@@ -181,9 +181,9 @@ crit_lower <- quantile(d_sim, alpha / 2)
 crit_upper <- quantile(d_sim, 1 - alpha / 2)
 
 # Two-sided Monte Carlo p-value calculation
-p_lower <- mean(d_sim <= d_obs)
-p_upper <- mean(d_sim >= d_obs)
-p_val_dw <- 2 * min(p_lower, p_upper, 0.5)
+p_lower_adj <- (sum(d_sim <= d_obs) + 1) / (B + 1)
+p_upper_adj <- (sum(d_sim >= d_obs) + 1) / (B + 1)
+p_val_dw <- 2 * min(p_lower_adj, p_upper_adj, 0.5)
 
 cat("--- Monte Carlo Durbin-Watson Test Results ---\n")
 cat("MC Lower Critical Value (2.5%):", crit_lower, "\n")
