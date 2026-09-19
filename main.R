@@ -39,15 +39,15 @@ dat$t <- (dat$Year - 1900) /10
 # ====================================================================================
 
 plot(
-     dat$Year,
-     dat$Temperature,
-     type = "o",
-     pch = 16,
-     cex = 0.5,
-     xlab = "Year",
-     ylab = "Annual mean temp. in C",
-     main = "Annual mean temp. Geneva"
-     )
+  dat$Year,
+  dat$Temperature,
+  type = "o",
+  pch = 16,
+  cex = 0.5,
+  xlab = "Year",
+  ylab = "Annual mean temp. in C",
+  main = "Annual mean temp. Geneva"
+)
 
 # The model is y_t = \beta_0 + \beta_1 t + \epsilon_t
 # With my definition of t, \beta_1 is already C per decade
@@ -77,10 +77,10 @@ dat$fitted_linear <- fitted(trend_model)
 ggplot(dat, aes(x = Year, y = Temperature)) + geom_line(linewidth = 0.5) +
   geom_point(size = 1) + geom_line( aes(y = fitted_linear), linewidth = 1) +
   labs(
-       title = "Geneva temp. series with linear trend",
-       x = "year",
-       y = "Annual mean temp. C"
-       ) + theme_minimal(base_size = 12) 
+    title = "Geneva temp. series with linear trend",
+    x = "year",
+    y = "Annual mean temp. C"
+  ) + theme_minimal(base_size = 12) 
 
 
 
@@ -138,10 +138,10 @@ qqline(dat$residual)
 # Durbin Watson Monte Carlo test
 # ====================================================================================
 dw_stat <- function(residuals) {
-
+  
   numerator <- sum(diff(residuals)^2)
   denominator <- sum(residuals^2)
-
+  
   numerator / denominator
 }
 
