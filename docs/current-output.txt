@@ -40,3 +40,21 @@ F-statistic: 26.38 on 1 and 224 DF,  p-value: 6.086e-07
 Estimated intercept 9.616634 C
 Estimated trend 0.03370928 C per decade 
 Observed Durbin-Watson statistic: 1.4147 
+--- Monte Carlo Durbin-Watson Test Results ---
+Null: iid Gaussian errors with constant variance, conditional on X.
+Simulations: 9999 | Seed: 20260914
+MC Lower Critical Value (2.5%): 1.75196
+MC Upper Critical Value (97.5%): 2.271755
+Monte Carlo p-value: 0.0002
+Rejection region at 5%: DW < 1.75196 or DW > 2.271755
+Lower/upper simulation tail counts: 0 / 9999
+Minimum attainable two-sided Monte Carlo p-value: 0.0002
+Conclusion: reject the stated DW null at 5%.
+DW and ACF lags refer to adjacent available observations, not necessarily years.
+
+--- Breusch-Pagan Test Results ---
+Breusch-Pagan Statistic (BP): 0.4173055
+Degrees of freedom: 1
+BP p-value: 0.5182846
+Nominal conclusion at 5%: do not reject a zero linear variance trend.
+This test does not rule out nonlinear variance patterns; its p-value is not adjusted for serial dependence.
