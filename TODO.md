@@ -1,6 +1,6 @@
 # Our project checklist
 
-Last updated: **15 September 2026**. We keep this file as the live checklist and use [the progress report](docs/progress.pdf) for the dated explanation of our methods and findings.
+Last updated: **20 September 2026**. We keep this file as the live checklist and use [the progress report](docs/progress.pdf) for the dated explanation of our methods and findings.
 
 ## Completed
 
@@ -11,21 +11,21 @@ Last updated: **15 September 2026**. We keep this file as the live checklist and
 - [x] Plot the temperature series and fitted trend.
 - [x] Produce residual time, ACF, squared-residual/LOESS and normal Q–Q plots.
 - [x] Calculate the observed DW statistic: **1.4147**.
-- [x] Verify that the unchanged script runs in a clean R session and reproduces all six saved plots.
+- [x] Verify that the updated script runs in a clean R session and preserves the original estimates and six plots.
 - [x] Document the current findings, limitations and unfinished methods.
 
 ## Our next priorities: Part I
 
-- [ ] Discuss the 35 missing years, especially 1981–2009.
+- [x] Discuss the 35 missing years, especially 1981–2009.
 - [ ] Clarify whether the intended trend uses actual calendar time or a rescaled observation index.
-- [ ] Document that the current ACF and DW use adjacent available observations, not uniformly one-year intervals.
+- [x] Document that the current ACF and DW use adjacent available observations, not uniformly one-year intervals.
 - [ ] Make missing periods explicit in temperature/residual plots and qualify LOESS across gaps; retain the full supplied sample.
-- [ ] Specify the DW null error model and its assumptions.
-- [ ] Implement the **two-sided DW Monte Carlo test with B = 9,999 and alpha = 0.05**, refitting the same design in each replication.
-- [ ] Record separate lower/upper critical values, the two-sided Monte Carlo p-value convention, the seed and the conclusion.
-- [ ] Fit the BP auxiliary regression `residual_sq ~ t` using the same transformed time variable.
-- [ ] Report `BP = n * R_squared_aux`, its chi-squared(1) p-value and a qualified interpretation.
-- [ ] Discuss how residual dependence affects the standard BP calibration.
+- [x] Specify the DW null error model and its assumptions.
+- [x] Implement the **two-sided DW Monte Carlo test with B = 9,999 and alpha = 0.05**, using the residual-maker projection equivalent to refitting the same design in each replication.
+- [x] Record separate lower/upper critical values, the two-sided Monte Carlo p-value convention, the seed and the conclusion.
+- [x] Fit the BP auxiliary regression `residual_sq ~ t` using the same transformed time variable.
+- [x] Report `BP = n * R_squared_aux`, its chi-squared(1) p-value and a qualified interpretation.
+- [x] Discuss how residual dependence affects the standard BP calibration.
 - [ ] Clarify Question 6: finite-sample simulation requires a specified null distribution; BP is not inherently impossible to calibrate by Monte Carlo.
 - [ ] Write our integrated assessment of the initial model and explain each diagnostic.
 - [ ] Keep ordinary OLS significance output separate from validated inference; defer trend-significance conclusions as required.
@@ -65,5 +65,7 @@ Last updated: **15 September 2026**. We keep this file as the live checklist and
 **Presentation deadline:** 6 October 2026, 18:00.
 
 ## Update log
+
+- **20 September 2026:** Implemented and verified the DW Monte Carlo and BP tests. Matched DW critical values to the corrected tail-count rule, documented assumptions and interpretation limits, and refreshed current results. The progress report remains the dated 15 September snapshot.
 
 - **15 September 2026:** We documented the existing Part I script and six plots. The initial model and observed DW are implemented; MC calibration, BP, structural-change inference and the simulation study remain open.

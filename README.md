@@ -6,7 +6,7 @@ We use **Station 08**, a supplied series of 226 annual mean temperatures in degr
 
 ## Where we are now
 
-**Last documented: 15 September 2026.** We have implemented the initial OLS model, produced all four residual diagnostics, and calculated the observed Durbin–Watson statistic. We have not yet implemented its Monte Carlo test or the Breusch–Pagan test.
+**Last documented: 20 September 2026.** We have implemented the initial OLS model, all four residual diagnostics, the two-sided Durbin–Watson Monte Carlo test, and the specified Breusch–Pagan auxiliary regression. The numerical tests are complete; the remaining Part I work includes the inferential comparison and integrated model assessment.
 
 | Completed step | What we have saved |
 | --- | --- |
@@ -14,9 +14,10 @@ We use **Station 08**, a supplied series of 226 annual mean temperatures in degr
 | Linear trend estimation | OLS coefficients and model summary |
 | Temperature plots | Raw series and fitted trend |
 | Residual diagnostics | Residual time plot, ACF, squared residuals with LOESS, normal Q–Q plot |
-| Durbin–Watson calculation | Observed statistic only |
+| Durbin–Watson Monte Carlo test | Observed statistic, 9,999 simulations, separate critical values and two-sided p-value |
+| Breusch–Pagan test | Auxiliary regression, nR² statistic and nominal chi-squared(1) p-value |
 
-Our detailed working record is in **[the progress report](docs/progress.pdf)**, with editable **[LaTeX source](docs/progress.tex)**. We track next steps in **[TODO.md](TODO.md)**.
+The **[progress report](docs/progress.pdf)** and its **[LaTeX source](docs/progress.tex)** are retained as a **15 September historical snapshot**, before the formal tests were implemented. This README and the [saved console output](docs/current-output.txt) describe the current results. We track next steps in **[TODO.md](TODO.md)**.
 
 ## Our findings so far
 
@@ -36,8 +37,20 @@ $$
 | Model R² | 0.1054 |
 | Residual standard error | 0.6596 °C |
 | Observed Durbin–Watson statistic | 1.4147 |
+| DW lower / upper critical values (5% two-sided) | 1.751960 / 2.271755 |
+| DW Monte Carlo p-value | 0.0002 |
+| BP statistic | 0.417306 |
+| BP nominal p-value | 0.518285 |
 
-These values are reproducible from our current script. The [saved console output](docs/current-output.txt) comes from running it in a clean R session. We read the positive slope as an average upward fitted trend in the supplied record. Our residual ACF and DW statistic suggest positive dependence, but we do **not** yet have a Monte Carlo p-value or formal autocorrelation-test conclusion. The squared-residual plot also does not substitute for a completed heteroskedasticity test.
+These values are reproducible from our current script. The [saved console output](docs/current-output.txt) comes from running it in a clean R session. We read the positive slope as an average upward fitted trend in the supplied record and continue to postpone conclusions about trend significance.
+
+### Formal diagnostic tests
+
+For DW, we hold the observed regression design fixed and simulate **iid Gaussian errors with constant variance**, using seed **20260914** and **9,999** replications. This null is stronger than simply assuming zero first-order correlation. Projecting each draw with the residual-maker matrix is equivalent to refitting the same intercept and trend in every replication. The fitted coefficients and a common error scale cancel from DW.
+
+At 5%, we reject when **DW < 1.751960 or DW > 2.271755**. We use `quantile(..., type = 6)`, which selects simulation ranks 250 and 9750 and agrees with the plus-one tail-count rule for this continuous null. The two-sided p-value is twice the smaller corrected tail probability, capped at one. Our observed DW falls below the lower critical value, in the direction associated with positive residual dependence. No simulated statistic was as small as the observed DW, so **0.0002 is the simulation's minimum attainable two-sided p-value**, not an exact underlying tail probability.
+
+For BP, we regress squared OLS residuals on an intercept and the same transformed time variable, then calculate **nR²** from that auxiliary regression. The nominal chi-squared(1) p-value of **0.518285** does not reject a zero linear variance trend at 5%. This does not establish constant variance or exclude nonlinear variance patterns. The conventional calibration does not adjust for serial dependence, so we qualify this result in light of the DW diagnostic.
 
 ### The missing-year issue
 
@@ -49,22 +62,22 @@ The line joining those dates in our plots is a graphical connection across the g
 
 | File | Purpose |
 | --- | --- |
-| [`main.R`](main.R) | Our current Part I script; ends after calculating observed DW |
+| [`main.R`](main.R) | Our current Part I script, including DW Monte Carlo and BP tests |
 | [`Station08.csv`](Station08.csv) | Supplied annual temperature data |
 | [`Station08_metadata.pdf`](Station08_metadata.pdf) | Station details, variable definition and source |
 | [`CMEAssignment2026Handout.pdf`](CMEAssignment2026Handout.pdf) | Assignment requirements |
 | [`Rplots.pdf`](Rplots.pdf) | Six plots generated by the current script |
 | [`docs/current-output.txt`](docs/current-output.txt) | Captured output from a clean-session run |
-| [`docs/progress.pdf`](docs/progress.pdf) | Our progress, findings, methods, figures and next steps |
-| [`docs/progress.tex`](docs/progress.tex) | Editable source of the progress report |
+| [`docs/progress.pdf`](docs/progress.pdf) | Historical progress report dated 15 September; predates the formal tests |
+| [`docs/progress.tex`](docs/progress.tex) | Source of the historical progress report |
 | [`TODO.md`](TODO.md) | Ongoing checklist |
 | [`Makefile`](Makefile) | Commands to run the analysis and rebuild the report |
 
-We have kept the existing R script, data and original PDFs unchanged in this initial repository snapshot. The progress report embeds the pages of `Rplots.pdf` directly, preserving the original figures.
+The supplied data and assignment PDFs are unchanged. The added formal tests leave the original OLS estimates and six diagnostic plots unchanged. The historical progress report embeds pages of `Rplots.pdf` directly.
 
 ## Reproduce our current work
 
-We verified the script with **R 4.6.1** and **ggplot2**. R and ggplot2 are required for the analysis; LaTeX is only needed to rebuild the report.
+We verified the script with **R 4.6.1** and **ggplot2 4.0.3**. R and ggplot2 are required for the analysis; LaTeX is only needed to rebuild the report.
 
 ```sh
 git clone git@github.com:ernestterjyan/temperature-trends-CME.git
@@ -102,7 +115,7 @@ The report's written numbers and interpretations are a dated snapshot. Rebuildin
 ## What comes next
 
 1. Resolve the missing-year and time-indexing issue.
-2. Finish Part I: a two-sided DW Monte Carlo test with 9,999 simulations, the specified BP auxiliary regression, and a combined diagnostic assessment.
+2. Finish the Part I write-up: compare the inferential principles in Question 6 and combine the graphical and formal diagnostics into an overall model assessment.
 3. Investigate a continuous broken trend with an unknown break date and bootstrap inference.
 4. Compare bootstrap procedures through the assignment's simulation study.
 
