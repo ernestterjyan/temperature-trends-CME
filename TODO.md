@@ -26,7 +26,7 @@ Last updated: **20 September 2026**. We keep this file as the live checklist and
 - [x] Fit the BP auxiliary regression `residual_sq ~ t` using the same transformed time variable.
 - [x] Report `BP = n * R_squared_aux`, its chi-squared(1) p-value and a qualified interpretation.
 - [x] Discuss how residual dependence affects the standard BP calibration.
-- [ ] Clarify Question 6: finite-sample simulation requires a specified null distribution; BP is not inherently impossible to calibrate by Monte Carlo.
+- [ ] Clarify Question 6: finite-sample simulation requires a specified null distribution; BP is not inherently impossible to calibrate by Monte Carlo. (BP's null doesn't assume the distribution of the errors, it just assumes constant variance over time, whereas DW's null already assumes normality, maybe...)(Santonio)
 - [ ] Write our integrated assessment of the initial model and explain each diagnostic.
 - [ ] Keep ordinary OLS significance output separate from validated inference; defer trend-significance conclusions as required.
 
