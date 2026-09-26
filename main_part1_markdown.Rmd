@@ -1,0 +1,626 @@
+---
+title: "Station08 Annual Mean Temperature: Part I — Linear Trend and Residual Diagnostics"
+subtitle: "Station 08 — Computational Methods in Econometrics"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    toc_depth: 3
+    code_folding: show
+    self_contained: true
+editor_options:
+  markdown:
+    wrap: 72
+---
+# Purpose and how to use this document
+
+This Part I document estimates a linear trend in the supplied annual temperature record and examines its residuals. It includes gap-aware plots, autocorrelation diagnostics, a Durbin–Watson Monte Carlo test, and a Breusch–Pagan test. Structural-change estimation, bootstrap inference, and the Monte Carlo comparison remain future work in Parts II and III.
+
+This document contains the statistical code, explanations, tables, figures, interpretation and independent checks all in one place.
+
+
+```{r setup, include=FALSE}
+input_path <- knitr::current_input(dir = TRUE)
+project_root <- normalizePath(dirname(input_path), mustWork = TRUE)
+stopifnot(file.exists(file.path(project_root, "Station08.csv")))
+artifact_root <- file.path(project_root, "work", "main_rmd_run")
+dir.create(file.path(artifact_root, "knitr_figures"), recursive = TRUE, showWarnings = FALSE)
+knitr::opts_knit$set(root.dir = project_root)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = TRUE, error = FALSE, cache = FALSE,
+  fig.align = "center", fig.path = paste0(file.path(artifact_root, "knitr_figures"), "/")
+)
+options(knitr.graphics.rel_path = FALSE)
+```
+
+# 1 Model Specification and Notes
+
+This report starts with the model
+$$y_i=\beta_0 + \beta_1t_i + \varepsilon_i, \qquad i=1, \ldots,n,$$
+where $i$ is observation position and $t_i$ is the transformed calendar years:
+$$t_i = (\mathrm{Year}_i - 1900)/10.$$
+**On rescaling time:** The year-1900 centering is retained. The intercept is the fitted linear model temperature at 1900, and the slope is expressed in degrees Celsius per decade. Centering changes the intercept's reference year but not the slope or fitted curve. Appendix 1 explains this choice.
+
+**On data completeness** There are 226 observations covering 261 calendar years from 1753-2013, with 35 missing years across five gaps. The largest gap is **1981- 2009**, comprising 29 unobserved years. Observation position and calendar time therefore differ. We retain every supplied observation, preserve calendar spacing,  and explain which diagnostics use each kind of lag.
+
+
+# 0.2 Data Loading and Diagnosis of the Gap Structure
+
+```{r load-data}
+set.seed(20260914)
+
+library(ggplot2)
+library(lmtest)   # used only for post-hoc cross-checking against standard implementations; formal conclusions rely on our own implementation
+
+dat <- read.csv(file.path(project_root, "Station08.csv"))
+
+# Sort by year, keep only observations where both Year and Temperature are non-missing
+dat <- dat[order(dat$Year), ]
+dat <- dat[complete.cases(dat[, c("Year", "Temperature")]), ]
+n <- nrow(dat)
+
+cat("Number of observations n =", n, "\n")
+cat("First year:", min(dat$Year), " Last year:", max(dat$Year), "\n")
+```
+
+```{r gap-detection}
+# ---- Gap diagnostics: locate every "year jump" ----
+full_years     <- seq(min(dat$Year), max(dat$Year))
+missing_years  <- setdiff(full_years, dat$Year)
+# year difference between consecutive observations
+gap_len        <- diff(dat$Year)
+# a difference > 1 indicates a gap
+gap_start_idx  <- which(gap_len > 1)
+
+gap_table <- data.frame(
+  from      = dat$Year[gap_start_idx],
+  to        = dat$Year[gap_start_idx + 1],
+  n_missing = gap_len[gap_start_idx] - 1
+)
+
+print(gap_table)
+cat("\nTotal missing years:", length(missing_years), "\n")
+cat("Number of gaps:", nrow(gap_table), "\n")
+big_gap <- gap_table[which.max(gap_table$n_missing), ]
+cat("Largest gap:", big_gap$n_missing, "years, from", big_gap$from, "to", big_gap$to, "\n")
+```
+
+The data confirm **5 gaps totaling 35 missing years**, the vast majority
+of which is the 29-year gap from 1981–2009. This means that two
+observations that are adjacent in "sequence position" are not
+necessarily adjacent in calendar time — this is the fundamental reason
+why the ACF and DW test below require special handling.
+
+To ensure that every subsequent time-connected plot is not misleading,
+we construct a "contiguous year segment" label here: only observations
+adjacent within the same segment will be connected by a line.
+
+```{r segment-and-t}
+# Increment the segment id by 1 whenever the year jumps by more than 1 year; used to avoid drawing lines across gaps
+dat$segment <- c(1, cumsum(diff(dat$Year) > 1) + 1)
+
+# Centered, decade-scaled time index
+dat$t <- (dat$Year - 1900) / 10
+```
+
+# 1. Exploratory Analysis
+
+```{r explore-plot, fig.width=8, fig.height=4.5}
+ggplot(dat, aes(x = Year, y = Temperature)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.6) +
+  geom_line(aes(group = segment), linewidth = 0.4, colour = "steelblue4") +
+  geom_point(size = 0.8, colour = "steelblue4") +
+  labs(
+    title = "Geneva annual mean temperature (1753-2013)",
+    subtitle = "Grey shading = largest data gap (1981-2009, no observations)",
+    x = "Year", y = "Annual mean temperature (°C)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+```{r explore-stats}
+cat("Temperature range:", round(range(dat$Temperature), 2), "\n")
+cat("5 coldest years:\n")
+print(head(dat[order(dat$Temperature), c("Year", "Temperature")], 5))
+cat("5 warmest years:\n")
+print(tail(dat[order(dat$Temperature), c("Year", "Temperature")], 5))
+cat("Standard deviation before 1900:", round(sd(dat$Temperature[dat$Year < 1900]), 3),
+    "  Standard deviation from 1900 onward:", round(sd(dat$Temperature[dat$Year >= 1900]), 3), "\n")
+```
+
+**Main features:**
+
+- **Direction of the trend**: The series shows an overall slow upward
+  trend, rising from a mean level of about 9.3°C in the mid-18th century
+  to levels above 10.5°C in 2010–2013, consistent with the broad
+  direction of global warming.
+- **Interannual variability**: Year-to-year fluctuations are clearly
+  larger than the change in the trend itself (standard deviation of
+  about 0.6–0.7°C); the temperature can swing by more than 1°C between
+  two adjacent years, suggesting that a purely deterministic trend is
+  unlikely to explain all of the variation.
+- **Unusual observations**: The coldest years are concentrated in the
+  19th century (1851, 1808, 1829, etc., with a minimum of 7.65°C); the
+  warmest years, apart from 1834, 1947, and 1961, are mainly
+  concentrated in 2011–2012 after the gap (reaching 11.73°C and 11.29°C
+  respectively), forming two prominent high points at the tail of the
+  series.
+- **Visible changes in the behaviour of the series**: The most
+  noticeable "change in behaviour" is actually **a structural absence of
+  data** rather than a change in the temperature itself — there are no
+  observations at all for the full 29 years from 1981–2009, which is
+  precisely the period widely recognized as the fastest phase of global
+  warming. Therefore, the apparent "jump" in the plot from 1980 directly
+  to noticeably warmer values around 2010 could reflect genuine
+  accelerated warming, or could simply be an artifact of the sample
+  happening to pick up warmer years at both ends — the current data
+  cannot distinguish between these two explanations. We return to this
+  point in the overall assessment in Section 7.
+
+# 2. OLS Estimation of the Linear Trend
+
+```{r ols-fit}
+trend_model <- lm(Temperature ~ t, data = dat)
+summary(trend_model)
+
+beta0_hat <- coef(trend_model)[1]
+beta1_hat <- coef(trend_model)[2]
+
+cat("Estimated intercept (fitted temperature around year 1900):", round(beta0_hat, 3), "°C\n")
+cat("Estimated slope:", round(beta1_hat, 4), "°C per decade\n")
+cat("Converted to per century:", round(beta1_hat * 10, 3), "°C per century\n")
+```
+
+```{r ols-plot, fig.width=8, fig.height=4.5}
+dat$fitted_linear <- fitted(trend_model)
+
+ggplot(dat, aes(x = Year, y = Temperature)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.6) +
+  geom_line(aes(group = segment), linewidth = 0.4, colour = "grey40") +
+  geom_point(size = 0.8, colour = "grey40") +
+  geom_line(aes(y = fitted_linear), colour = "firebrick", linewidth = 1) +
+  labs(title = "Geneva temperature series with OLS linear trend",
+       x = "Year", y = "Annual mean temperature (°C)") +
+  theme_minimal(base_size = 12)
+```
+
+**Interpretation:** $\hat\beta_0 = 9.617°C$ is the model-implied
+"average" temperature level around the year 1900;
+$\hat\beta_1 = 0.0337°C$ per decade (about 0.337°C per century)
+represents the estimated long-run linear warming rate.
+$R^2 \approx 0.105$, indicating that the deterministic trend explains
+only about 10.5% of the total variation, with the vast majority of
+interannual variability remaining in the residuals — consistent with the
+impression from the exploratory analysis that "interannual variability
+far exceeds the change due to the trend."
+
+**On the impact of the gaps:** This step's point estimation is **not
+affected by the gaps** — as long as the missingness is unrelated to the
+temperature level itself (a reasonable assumption: missing data more
+plausibly reflects a break in recording/digitization rather than data
+being removed because the temperature was unusual), OLS remains unbiased
+and consistent even with an unevenly-spaced observation sequence.
+However, two limitations should be noted: (i) the effective sample size
+drops to 226, so the standard errors are correspondingly larger; (ii)
+since 1981–2009 is entirely blank, the estimated slope is essentially
+determined by the contrast between the "1753–1980" and "2010–2013"
+segments — if the true trend has accelerated or undergone a structural
+change in recent decades, this single linear slope cannot detect it, and
+can only provide an "overall average" warming rate. As required by the
+assignment, we do not draw conclusions about the statistical
+significance of the slope at this stage; we only report and interpret
+the estimated results.
+
+# 3. Residual Diagnostics
+
+```{r residuals}
+dat$residual    <- residuals(trend_model)
+dat$residual_sq <- dat$residual^2
+```
+
+## Residuals over Time
+
+```{r resid-time-plot, fig.width=8, fig.height=4.5}
+ggplot(dat, aes(x = Year, y = residual)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_line(aes(group = segment), linewidth = 0.4) +
+  geom_point(size = 0.8) +
+  labs(title = "Residuals from the linear trend model", x = "Year", y = "Residual (°C)") +
+  theme_minimal(base_size = 12)
+```
+
+The residuals fluctuate around 0 without any obvious systematic
+divergence or convergence over time, but there is a tendency for runs of
+same-signed residuals (a positive residual tends to be followed by
+another positive residual), suggesting possible positive serial
+correlation — we check this formally below using the ACF and the DW
+test.
+
+## Residual Autocorrelation Function (ACF) — Gap-Sensitive Step, Corrected
+
+**Why the original `acf()` is problematic:** By default, `acf()` treats
+the input vector as an **evenly spaced** time series, defining "lag k"
+by the **sequence position** of the observations rather than the true
+calendar year. In our data, the 178th observation is the year 1980 and
+the 179th observation is the year 2010 — if `acf()` is applied directly
+to the residual vector, it would treat these two residuals as a "lag 1"
+pair, even though they are actually 30 calendar years apart. This
+incorrectly mixes a long-distance relationship into the estimate of
+"first-order autocorrelation," distorting the shape of the ACF.
+
+**Correction:** Place the residuals back onto the complete 1753–2013
+calendar grid, filling missing years with `NA`, construct a `ts` object,
+and then compute the ACF with `na.action = na.pass` — this way R
+computes autocorrelation based on the **true calendar lag**, correctly
+skipping the "spurious lag 1" that crosses the gap rather than treating
+it as a genuine first-order relationship.
+
+```{r acf-compare, fig.width=9, fig.height=4}
+# Naive approach (uncorrected, shown only for comparison to illustrate the problem)
+acf_naive <- acf(dat$residual, plot = FALSE)
+
+# Corrected approach: place back on the full calendar grid + na.action = na.pass
+res_full <- rep(NA_real_, length(full_years))
+res_full[match(dat$Year, full_years)] <- dat$residual
+res_ts   <- ts(res_full, start = min(full_years), frequency = 1)
+acf_gap  <- acf(res_ts, na.action = na.pass, lag.max = 20, plot = FALSE)
+
+par(mfrow = c(1, 2))
+plot(acf_naive, main = "Uncorrected ACF (ignores calendar gaps)")
+plot(acf_gap,   main = "Gap-sensitive ACF (na.action = na.pass)")
+
+cat("Uncorrected lag-1 autocorrelation:", round(acf_naive$acf[2], 3), "\n")
+cat("Gap-sensitive lag-1 autocorrelation:", round(acf_gap$acf[2], 3), "\n")
+```
+
+The lag-1 autocorrelation coefficients from the two methods are fairly
+close (about 0.29 versus 0.30), indicating that in this particular case
+the gaps do not distort the shape of the ACF very severely (most gaps
+are only 1–3 years, and there is only one "spurious pair" that truly
+spans 29 years). But **in principle** this discrepancy could be
+arbitrarily large, depending on the location and size of the gaps, so in
+series with noticeable gaps it is prudent to insist on a
+"calendar-sensitive" computation of the ACF. Both versions show positive
+autocorrelation near lag 1 that gradually decays as the lag order
+increases, which is a typical signature of short-run positive serial
+correlation.
+
+## Residual Variance over Time
+
+```{r variance-plot, fig.width=8, fig.height=4.5}
+ggplot(dat, aes(x = Year, y = residual_sq)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.6) +
+  geom_point(size = 0.8) +
+  geom_smooth(method = "loess", se = FALSE, colour = "firebrick") +
+  labs(
+    title = "Squared residuals over time",
+    subtitle = "Caution: the smooth line is not supported by any observations inside the shaded region",
+    x = "Year", y = expression(hat(epsilon)[t]^2)
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+The scatter itself uses the true Year as the x-axis and is unaffected by
+unequal spacing; but the overlaid loess smooth, when passing through the
+29-year gap from 1981–2009, is essentially **interpolation/extrapolation
+with no data support whatsoever** — the noticeable upward tick at the
+end of the curve is almost entirely driven by the 4 points from
+2010–2013 alone, and should not be interpreted as "the variance was also
+rising during the gap." When interpreting this plot, the smooth line
+inside the shaded region should be treated only as a visual aid
+connecting the two segments, not as evidence.
+
+## Normal QQ Plot of Residuals
+
+```{r qq-plot, fig.width=5, fig.height=5}
+qqnorm(dat$residual, main = "Normal QQ plot of residuals")
+qqline(dat$residual)
+```
+
+In the QQ plot, apart from a few points that fall slightly below the
+reference line at the far left (the most negative theoretical
+quantiles), the vast majority of points lie tightly along the diagonal,
+broadly consistent with the normality assumption. The mild deviation in
+the left tail corresponds to the handful of unusually cold 19th-century
+years mentioned earlier (1851, 1808, 1805, etc.). This step **is not
+affected by the gaps**, because the QQ plot only concerns the marginal
+distribution of the residuals, which does not depend on the
+observations' time order or spacing.
+
+# 4. Testing for First-Order Residual Autocorrelation: Durbin–Watson Monte Carlo Test
+
+**Why the original DW statistic also needs correction:** The original
+code
+
+``` r
+dw_stat <- function(residuals) sum(diff(residuals)^2) / sum(residuals^2)
+```
+
+uses `diff()` to take term-by-term differences of the residual vector,
+which has exactly the same problem as `acf()` — it treats **sequentially
+adjacent** residual pairs as a "first-order" relationship, so the
+difference between the 1980 and 2010 residuals is included in the
+numerator, even though this is really a "30th-order" relationship and
+should not appear in a first-order autocorrelation test.
+
+**Correction:** We redefine
+$$d = \frac{\sum_{(s,s+1)\in \mathcal{C}} (\hat\varepsilon_{s+1} - \hat\varepsilon_s)^2}{\sum_t \hat\varepsilon_t^2}$$
+where $\mathcal{C}$ contains only those observation pairs that are
+**truly adjacent on the calendar** (year difference exactly equal to 1).
+The denominator still uses the sum of squares of all residuals (the
+denominator does not involve the notion of "adjacency" and is
+unaffected). This $d$ can be written as the quadratic form
+$d = e'Ae / e'e$, where $A = D'D$ and $D$ is a matrix that takes
+differences only over the valid adjacent pairs in $\mathcal{C}$ — this
+follows exactly the same construction logic as the original DW
+statistic, only restricting "which differences are taken" to truly
+adjacent years.
+
+```{r dw-define}
+# Naive DW (uncorrected, shown only for comparison)
+dw_naive_stat <- function(e) sum(diff(e)^2) / sum(e^2)
+d_obs_naive <- dw_naive_stat(dat$residual)
+
+# ---- Gap-sensitive DW: only compute differences over pairs that are truly calendar-adjacent (year difference = 1) ----
+valid_pairs <- which(diff(dat$Year) == 1)      # indices of valid "adjacent pairs"
+m_pairs <- length(valid_pairs)
+
+Dmat <- matrix(0, nrow = m_pairs, ncol = n)
+for (k in seq_len(m_pairs)) {
+  i <- valid_pairs[k]
+  Dmat[k, i]     <- -1
+  Dmat[k, i + 1] <-  1
+}
+A_gap <- crossprod(Dmat)   # A = D'D
+
+dw_gap_stat <- function(e) as.numeric((t(e) %*% A_gap %*% e) / (t(e) %*% e))
+d_obs <- dw_gap_stat(dat$residual)
+
+cat("Naive DW statistic (uncorrected):", round(d_obs_naive, 4), "\n")
+cat("Gap-sensitive DW statistic:", round(d_obs, 4), "\n")
+cat("Valid calendar-adjacent year pairs used:", m_pairs, "/", n - 1, "sequence-adjacent pairs\n")
+```
+
+The two values are quite close in this example (1.4147 versus 1.3865),
+because only 5 of the 225 sequence-adjacent pairs are not genuine
+calendar-adjacent pairs, so removing them correctly has a limited
+impact; but this correction is necessary in principle, and the
+discrepancy would be more pronounced with more numerous or larger gaps.
+The Monte Carlo test below uniformly uses the **gap-sensitive version**
+of $d$.
+
+## Design of the Monte Carlo Test
+
+Under the null hypothesis $H_0:$ no first-order autocorrelation, if
+$\varepsilon \sim N(0,\sigma^2 I_n)$, then the residuals
+$e = M\varepsilon$ ($M$ being the residual-maker matrix constructed from
+the design matrix $X$). Since $d = e'Ae/e'e$ is a ratio of two quadratic
+forms, $\sigma^2$ cancels out automatically, so the **exact
+finite-sample distribution** of $d$ under $H_0$ depends only on $X$
+(through $M$) and $A$ (through the gap structure), not on the unknown
+$\beta,\sigma^2$ — this is precisely the theoretical basis that allows
+us to simulate the exact null distribution using standard-normal
+pseudo-errors (discussed in detail in Section 6). The key point here is:
+the $A$ matrix used in the simulation must be the same $A$ used for
+$d_{obs}$ (i.e., also constructed based on true calendar adjacency),
+otherwise the simulated reference distribution and the observed
+statistic would not correspond to the same statistic, invalidating the
+test.
+
+```{r dw-mc-test}
+X <- model.matrix(trend_model)
+H <- X %*% solve(t(X) %*% X) %*% t(X)
+M <- diag(n) - H
+
+set.seed(20260914)
+B <- 9999
+d_sim <- numeric(B)
+
+for (b in 1:B) {
+  eps_star <- rnorm(n)                     # standard-normal pseudo-errors under H0
+  e_star   <- as.numeric(M %*% eps_star)   # corresponding OLS residuals
+  d_sim[b] <- dw_gap_stat(e_star)          # using the exact same A matrix as for d_obs
+}
+
+alpha <- 0.05
+crit_lower <- quantile(d_sim, alpha / 2)
+crit_upper <- quantile(d_sim, 1 - alpha / 2)
+
+p_lower_adj <- (sum(d_sim <= d_obs) + 1) / (B + 1)
+p_upper_adj <- (sum(d_sim >= d_obs) + 1) / (B + 1)
+p_val_dw <- 2 * min(p_lower_adj, p_upper_adj, 0.5)
+
+cat("--- Monte Carlo Durbin-Watson Test (gap-sensitive version) ---\n")
+cat("d_obs:", round(d_obs, 4), "\n")
+cat("MC lower critical value (2.5%):", round(crit_lower, 4), "\n")
+cat("MC upper critical value (97.5%):", round(crit_upper, 4), "\n")
+cat("MC two-sided p-value:", round(p_val_dw, 4), "\n")
+
+# Cross-check: lmtest::dwtest uses the naive (uncorrected) statistic + asymptotic normal approximation, for reference only
+dwtest(trend_model)
+```
+
+**Results and conclusion:** $d_{obs} = 1.3865$. Because the
+finite-sample distribution of $d$ under the null need not be symmetric
+around 2, we obtain separate lower and upper critical values of $1.7031$
+and $2.2241$ (rather than simply computing the upper one as $4$ minus
+the lower one). The **rejection region** is $d < 1.7031$ or
+$d > 2.2241$. The observed value $1.3865$ falls below the lower critical
+value, and the MC two-sided p-value is $0.0002$; at the $\alpha=0.05$
+level we reject the null hypothesis of "no first-order autocorrelation,"
+providing strong evidence that the residuals exhibit **positive
+first-order serial correlation**. This is fully consistent with the
+graphical diagnostics (the runs of same-signed residuals in the residual
+plot, and the positive value of the ACF at lag 1).
+
+# 5. Testing for Heteroskedasticity: Breusch–Pagan Test
+
+The auxiliary regression
+$\hat\varepsilon_t^2 = \gamma_0 + \gamma_1 t + v_t$ tests
+$H_0: \gamma_1 = 0$ (homoskedasticity) against $H_1: \gamma_1 \ne 0$.
+
+**On the impact of the gaps:** This step is essentially **unaffected**
+by the gaps — the auxiliary regression uses each observation's **true**
+$t$ value as the regressor, and the formulas for $R^2$ and $BP=nR^2$
+themselves do not rely on an equal-spacing assumption. The only indirect
+effect of the gaps is that the effective sample size $n=226$ is smaller,
+which affects the reliability of the asymptotic $\chi^2(1)$
+approximation — but this is purely a sample-size issue, not the
+structural "sequence-adjacent ≠ calendar-adjacent" problem that affects
+DW/ACF (this is exactly the essential distinction discussed in Section
+6).
+
+```{r bp-test}
+aux_model <- lm(residual_sq ~ t, data = dat)
+R2_aux   <- summary(aux_model)$r.squared
+BP_stat  <- n * R2_aux
+p_val_bp <- 1 - pchisq(BP_stat, df = 1)
+
+cat("Breusch-Pagan statistic BP:", round(BP_stat, 4), "\n")
+cat("Degrees of freedom:", 1, "\n")
+cat("BP p-value:", round(p_val_bp, 4), "\n")
+
+# Cross-check
+bptest(trend_model, varformula = ~ t, data = dat)
+```
+
+**Result:** $BP = 0.4173$, $p = 0.5183$, far greater than 0.05, so we
+**cannot reject** the null hypothesis of homoskedasticity. The graphical
+diagnostic (the variance-over-time plot in Section 3.3, setting aside
+the unsupported extrapolation inside the shaded region) also shows no
+systematic variance pattern over time — the two conclusions agree.
+
+# 6. Comparing the Inferential Principles
+
+Why is it valid to construct exact Monte Carlo critical values for the
+**DW** statistic using the procedure "generate standard-normal
+pseudo-errors → project through the $M$ matrix → compute the statistic,"
+but the same idea cannot simply be transferred to the **BP** statistic?
+
+- **The DW statistic is a "pivotal quantity":** $d = e'Ae/e'e$, where
+  $e = M\varepsilon$ is a **linear** transformation of $\varepsilon$,
+  and both $A$ and $M$ are fixed matrices that depend only on the design
+  matrix $X$ (i.e., on the known year/gap structure), independent of the
+  unknown parameters $\beta,\sigma^2$. As long as $\varepsilon$ is
+  assumed normal, the **exact finite-sample distribution** of $d$ under
+  $H_0$ depends only on $X$, and can be computed exactly (or
+  approximated exactly by simulation) for any $n$ or sample design —
+  this is precisely what makes the "MC test" valid in the Dufour sense:
+  the simulated reference distribution *is* the true null distribution,
+  not an approximation.
+
+- **The BP statistic is fundamentally an asymptotic (large-sample)
+  test:** $BP = nR^2_{aux}$ is a Lagrange-multiplier-type statistic
+  whose auxiliary regression uses the **squared** residuals
+  ($\hat\varepsilon_t^2$) as the dependent variable — a **nonlinear**
+  (quadratic) transformation of $\varepsilon$. Even under the assumption
+  that $\varepsilon$ is normal, $\hat\varepsilon_t^2$ is no longer
+  normally distributed (it is approximately chi-square-type and skewed);
+  the classical "$\chi^2(1)$" reference distribution is obtained via a
+  large-sample central limit theorem approximation, which holds strictly
+  only as $n\to\infty$. Its **finite-sample** exact distribution
+  generally does not have a closed form depending only on $X$ as neatly
+  as DW's does, and additionally depends on higher moments of the error
+  distribution (such as kurtosis) that are unknown. In other words, the
+  whole appeal of the BP test lies in not imposing strong assumptions on
+  the specific error distribution (it is a relatively "robust"
+  large-sample test); if we were to force a normality assumption purely
+  in order to simulate an exact distribution, we would be giving up BP's
+  main advantage — and even then, there is no simple guarantee, as there
+  is for DW, that the simulated distribution equals the true
+  finite-sample null distribution.
+
+In short: **The exact MC test for DW is valid because it is a ratio of
+quadratic forms that is linear in and scale-invariant with respect to**
+$\varepsilon$, whose null distribution is "pivotal"; BP involves a
+nonlinear transformation of $\varepsilon$, and its classical reference
+distribution is itself an asymptotic approximation rather than an exact
+result — it lacks the same pivotal property, so the same simulation
+recipe cannot simply be carried over.
+
+# 7. Overall Assessment of the Initial Model
+
+Bringing the graphical and formal diagnostics together:
+
+1.  **Clear direction, modest magnitude of trend**: OLS estimates a
+    linear warming trend of about 0.034°C per decade (equivalently
+    0.337°C per century), consistent with the exploratory analysis's
+    impression of an "overall slow upward" pattern; $R^2\approx 0.105$,
+    indicating that the deterministic trend explains only a small
+    fraction of the total variation.
+2.  **Normality broadly holds**: The QQ plot shows the residuals are
+    approximately normally distributed, with only a mild deviation at
+    the most extreme cold years, which is not a serious concern.
+3.  **Homoskedasticity broadly holds**: The BP test ($p=0.518$) and the
+    variance-over-time plot both find no evidence of a systematic change
+    in variance over time (the apparent upward tick inside the shaded
+    region is unsupported by data and should be disregarded).
+4.  **The independence assumption is clearly violated**: The ACF and the
+    Monte Carlo DW test ($d=1.3865$, $p=0.0002$) consistently indicate
+    significant positive first-order autocorrelation in the residuals.
+    This means the standard errors, t-values, and p-values reported by
+    default in `lm()` (based on the classical formulas assuming i.i.d.
+    errors) **are not trustworthy at this stage** — I guess this is also
+    exactly why the assignment asks us not to draw conclusions about the
+    significance of the trend coefficient yet: before the residual
+    autocorrelation has been addressed, any significance inference based
+    on classical OLS standard errors could be biased (typically
+    understating the true standard error, thereby inflating apparent
+    significance).
+5.  **The data gaps themselves are a non-negligible limitation**: The
+    largest gap happens to cover 1981–2009 (the period of fastest modern
+    warming), meaning the slope estimate in this model is essentially
+    determined by the contrast between the "pre-gap" segment and the
+    "short post-gap tail," rather than being supported by a genuinely
+    continuous, year-by-year observed curve. The sample data cannot
+    distinguish between "the entire two-hundred-plus-year period does
+    approximately follow a linear warming trend" and "warming has
+    accelerated / undergone a structural change in recent decades."
+
+**Conclusion:** The simple linear trend model provides a useful but
+**rough** preliminary description — it correctly captures the direction
+of long-term warming, and the normality and homoskedasticity of the
+residuals are broadly defensible, but (i) the residuals exhibit
+significant serial correlation, violating the independence assumption
+required for classical OLS inference, and (ii) the structural gaps in
+the data, particularly the nearly 30-year gap, further undermine our
+confidence in the assumed "linear" functional form. Together, these
+findings suggest that the linear trend model can only serve as a
+**starting point** for subsequent analysis, rather than as a final
+adequate description.
+
+# Appendix 1: Choosing the Centric Year
+
+This is a compromise between Interpretability and statistical
+rationality. First of all, 1900 is a whole year that all readers are
+familiar with and requires no explanation, making it convenient for
+communication and memorization. Secondly, it is not too far from the
+true sample mean (1866) and falls within a relatively dense interval of
+the data distribution; therefore, although the standard error of the
+intercept is not the smallest, it is still significantly better than
+when using end-point years, and the estimate remains quite stable.
+Moreover, in the context of climate change, the “early 20th century”
+itself serves as a practical point of reference (often used as a
+pre-industrial or early industrial benchmark), making it easier to align
+with readers’ background knowledge than a mean year calculated purely
+mathematically.
+
+# Appendix 2: Impact of Data Gaps on This Analysis — Summary
+
+| Component | Affected? | Approach adopted in this report |
+|----|----|----|
+| Exploratory plot | Visual level | Line drawn only within contiguous year segments + shading marks the largest gap |
+| OLS point estimates $\hat\beta_0,\hat\beta_1$ | Essentially unaffected | No modification needed; interpretation notes the limited ability to identify "recent trend" |
+| Residuals-over-time plot | Visual level | Same segment-based treatment as the exploratory plot |
+| Residual ACF | **Substantive** | Missing years filled with NA to construct a `ts` object, using `na.action = na.pass` |
+| Variance-over-time plot (loess) | Visual level | Gap shaded, with a text note that the smooth line is unsupported by data inside the gap |
+| QQ plot | Unaffected | No modification needed |
+| DW statistic and MC test | **Substantive** | $d$ redefined to use only differences between calendar-truly-adjacent residual pairs; the MC simulation matrix $A$ modified accordingly |
+| BP test | Essentially unaffected | No modification needed |
+| Overall model assessment | Conclusion level | Explicitly notes that the large gap weakens our ability to identify "whether a recent trend change exists" |

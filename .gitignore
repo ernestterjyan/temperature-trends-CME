@@ -23,3 +23,10 @@
 
 # Temporary review and build files
 tmp/
+
+# Reproducible R Markdown output and intermediate files
+/work/
+/outputs/
+/main_part1_markdown.html
+/main_part1_markdown_files/
+/main_part1_markdown_cache/
