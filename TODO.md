@@ -1,6 +1,6 @@
 # Our project checklist
 
-Last updated: **20 September 2026**. We keep this file as the live checklist and use [the progress report](docs/progress.pdf) for the dated explanation of our methods and findings.
+Last updated: **26 September 2026**. The primary analysis is now [`main_part1_markdown.Rmd`](main_part1_markdown.Rmd). The [progress report](docs/progress.pdf) remains a 15 September historical snapshot. The Part I interpretation remains subject to the review items below.
 
 ## Completed
 
@@ -10,16 +10,16 @@ Last updated: **20 September 2026**. We keep this file as the live checklist and
 - [x] Estimate the linear trend by OLS.
 - [x] Plot the temperature series and fitted trend.
 - [x] Produce residual time, ACF, squared-residual/LOESS and normal Q–Q plots.
-- [x] Calculate the observed DW statistic: **1.4147**.
-- [x] Verify that the updated script runs in a clean R session and preserves the original estimates and six plots.
+- [x] Calculate the earlier sequence-adjacent DW statistic: **1.4147**; retain it for comparison with the current calendar-adjacent statistic in the R Markdown report.
+- [x] Verify the earlier script in a clean R session, preserving its original estimates and six plots in the historical snapshot.
 - [x] Document the current findings, limitations and unfinished methods.
 
 ## Our next priorities: Part I
 
 - [x] Discuss the 35 missing years, especially 1981–2009.
 - [ ] Clarify whether the intended trend uses actual calendar time or a rescaled observation index.
-- [x] Document that the current ACF and DW use adjacent available observations, not uniformly one-year intervals.
-- [ ] Make missing periods explicit in temperature/residual plots and qualify LOESS across gaps; retain the full supplied sample.
+- [x] Distinguish the earlier sequence-adjacent ACF/DW from the calendar-aware calculations now used in the R Markdown document.
+- [x] Make missing periods explicit in temperature/residual plots and qualify LOESS across gaps; retain the full supplied sample.
 - [x] Specify the DW null error model and its assumptions.
 - [x] Implement the **two-sided DW Monte Carlo test with B = 9,999 and alpha = 0.05**, using the residual-maker projection equivalent to refitting the same design in each replication.
 - [x] Record separate lower/upper critical values, the two-sided Monte Carlo p-value convention, the seed and the conclusion.
@@ -27,7 +27,7 @@ Last updated: **20 September 2026**. We keep this file as the live checklist and
 - [x] Report `BP = n * R_squared_aux`, its chi-squared(1) p-value and a qualified interpretation.
 - [x] Discuss how residual dependence affects the standard BP calibration.
 - [ ] Clarify Question 6: finite-sample simulation requires a specified null distribution; BP is not inherently impossible to calibrate by Monte Carlo. (BP's null doesn't assume the distribution of the errors, it just assumes constant variance over time, whereas DW's null already assumes normality, maybe...)(Santonio)
-- [ ] Write our integrated assessment of the initial model and explain each diagnostic.
+- [ ] Review the integrated assessment drafted in the R Markdown document and reconcile its claims with the diagnostic assumptions.
 - [ ] Keep ordinary OLS significance output separate from validated inference; defer trend-significance conclusions as required.
 
 ## Part II: structural change and bootstrap inference
@@ -53,8 +53,8 @@ Last updated: **20 September 2026**. We keep this file as the live checklist and
 
 ## Reproducibility and group deliverables
 
-- [ ] Add explicit printing if we want the ggplots to display reliably through `source()`.
-- [ ] Refresh `docs/current-output.txt`, figures and reported numbers together after substantive changes.
+- [x] Use the R Markdown report as the primary entry point, rendered with `make report` in a clean R session.
+- [ ] Re-render `outputs/main_part1_markdown.html` and reconcile reported numbers after substantive changes; `docs/current-output.txt` and `Rplots.pdf` are historical snapshots.
 - [ ] Maintain consistent units, informative captions and clear distinctions between estimates, visual indications and formal tests.
 - [ ] Keep the report within **15 main-text pages** and prepare the **10-minute group presentation**.
 - [ ] Account for the handout's AI-use restrictions and acknowledge actual assistance and external sources.
@@ -65,6 +65,8 @@ Last updated: **20 September 2026**. We keep this file as the live checklist and
 **Presentation deadline:** 6 October 2026, 18:00.
 
 ## Update log
+
+- **26 September 2026:** Adopted the Part I R Markdown document as the primary entry point, corrected its rendering setup and data path, and preserved the previous repository under `before-rmarkdown-part1`. The current interpretation still needs the methodological review listed above.
 
 - **20 September 2026:** Implemented and verified the DW Monte Carlo and BP tests. Matched DW critical values to the corrected tail-count rule, documented assumptions and interpretation limits, and refreshed current results. The progress report remains the dated 15 September snapshot.
 
