@@ -61,8 +61,7 @@ The complete repository immediately before the R Markdown transition is preserve
 
 The old script has been removed from the active file list so there is one clear entry point. Historical reports and plots remain available above. `make historical-report` rebuilds the dated LaTeX report and requires LaTeX with `latexmk`; it does not run the current analysis.
 
-## Sources and acknowledgements
+## Sources
 
 - Supplied Station 08 metadata and assignment handout are included above. Dataset DOI: [10.7289/V5XW4GTH](https://doi.org/10.7289/V5XW4GTH).
 - The analysis uses R, ggplot2, and lmtest; the report uses knitr and rmarkdown.
-- AI assistance has been used for code suggestions, debugging, and documentation. This repository is work in progress; the group must account for the course's AI-use restrictions and acknowledge actual assistance before assessed submission.

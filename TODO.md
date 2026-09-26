@@ -57,7 +57,7 @@ Last updated: **26 September 2026**. The primary analysis is now [`main_part1_ma
 - [ ] Re-render `outputs/main_part1_markdown.html` and reconcile reported numbers after substantive changes; `docs/current-output.txt` and `Rplots.pdf` are historical snapshots.
 - [ ] Maintain consistent units, informative captions and clear distinctions between estimates, visual indications and formal tests.
 - [ ] Keep the report within **15 main-text pages** and prepare the **10-minute group presentation**.
-- [ ] Account for the handout's AI-use restrictions and acknowledge actual assistance and external sources.
+- [ ] Cite external sources used in the report.
 - [ ] Make sure every group member understands the submitted code and analysis.
 
 **Report deadline:** 2 October 2026, 18:00.
