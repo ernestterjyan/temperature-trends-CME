@@ -54,12 +54,16 @@ Last updated: **29 September 2026**. [`main.Rmd`](main.Rmd) contains the complet
 - [x] Bring the report, numerical inputs and required plots into the repository; verify that it compiles from its own folder.
 - [x] Remove obsolete progress files and `Rplots.pdf` from the current checkout, retaining Git history and local backups.
 - [x] Update the README, this checklist, build commands and ignore rules for the organised repository.
+- [x] Add `CODE_GUIDE.md` covering all 49 R chunks, important objects, formulas, seeds, output paths and validation limits.
+- [x] Create `presentation.tex` from the current Rmd/report, with ten main slides, a ten-minute speaking plan, speaker notes, technical backups and references.
+- [x] Compile and visually check all 16 pages of `presentation.pdf`; reuse the report's checked numerical inputs and plots.
+- [x] Add presentation build/cleanup commands and ignore Beamer build intermediates.
 
 ## Remaining group and submission work
 
 - [ ] Review the final report against the assignment handout as a group, confirm author/group details and complete the submission check. A successful compile and numerical validation do not replace this review.
-- [ ] Reconcile the presentation with the refined Rmd/report, confirm speaker roles and rehearse the **10-minute group presentation**. Existing presentation materials are in the separate Desktop workspace and have not been checked against this revision.
-- [ ] Make sure every group member understands the code, bootstrap assumptions, missing-year treatment, bandwidth sensitivity and interpretation limits.
+- [ ] Review the current [presentation](presentation.pdf), add agreed group names in `presentation.tex`, assign speaker roles and rehearse the **10-minute group presentation**.
+- [ ] Use [CODE_GUIDE.md](CODE_GUIDE.md) to make sure every group member understands the code, bootstrap assumptions, missing-year treatment, bandwidth sensitivity and interpretation limits.
 - [ ] Submit the agreed final report and presentation by their deadlines.
 
 After any further analysis change, re-render the Rmd, inspect its validation records, and refresh the report and presentation inputs before compiling and checking those deliverables. Rmd rendering does not automatically update the report's copied inputs or prose.
@@ -69,6 +73,8 @@ After any further analysis change, re-render the Rmd, inspect its validation rec
 **Presentation deadline:** 6 October 2026, 18:00.
 
 ## Update log
+
+- **29 September 2026, code guide and presentation:** Added a companion guide for all 49 chunks and a Beamer deck with speaker notes, technical backups and references. Compiled and visually checked the slides, and added documentation and build commands. Analysis methods, results and the existing report are unchanged.
 
 - **29 September 2026, repository cleanup:** Renamed the main Rmd, included its rebuilt HTML and the report with every required dependency, updated build commands, and removed historical snapshots from the active file list. Analysis methods and results are unchanged.
 

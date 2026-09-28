@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := all
-.PHONY: all analysis html report clean-report
+.PHONY: all analysis html report presentation clean-report clean-presentation
 
-all: html report
+all: html report presentation
 
 analysis: html
 
@@ -11,5 +11,11 @@ html:
 report:
 	latexmk -pdf -cd -interaction=nonstopmode -halt-on-error report/report.tex
 
+presentation:
+	latexmk -pdf -interaction=nonstopmode -halt-on-error presentation.tex
+
 clean-report:
 	latexmk -c -cd report/report.tex
+
+clean-presentation:
+	latexmk -c presentation.tex

@@ -7,7 +7,7 @@
 # macOS metadata
 .DS_Store
 
-# LaTeX build intermediates; keep the report PDF and source
+# LaTeX build intermediates; keep report/presentation PDFs and sources
 *.aux
 *.bbl
 *.bcf
@@ -20,6 +20,9 @@
 *.synctex.gz
 *.toc
 *.xdv
+*.nav
+*.snm
+*.vrb
 
 # Temporary review and build files
 tmp/

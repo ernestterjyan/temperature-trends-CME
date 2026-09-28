@@ -8,6 +8,8 @@ Course project for **Computational Methods in Econometrics** at Vrije Universite
 
 Open the knitted [main.html](main.html) in a browser to read the code and results, or use the submission [report PDF](report/report.pdf). The full analysis has been rendered and its validation checks pass. The current findings and limits are summarised below; remaining group and submission work is tracked in [`TODO.md`](TODO.md).
 
+Use [`CODE_GUIDE.md`](CODE_GUIDE.md) alongside the Rmd to understand all **49 code chunks**: their inputs, calculations, outputs and interpretation. It also explains the main objects, matrix shortcuts, seed conventions, saved files and limits of the checks. The [Beamer source](presentation.tex) and [presentation PDF](presentation.pdf) provide a ten-minute talk based on the same analysis.
+
 ## Reproduce the analysis document
 
 Requirements: R, `rmarkdown`, `knitr`, `ggplot2`, and Pandoc (also bundled with RStudio). `lmtest` is optional and supplies diagnostic cross-checks; the required DW and BP calculations are implemented directly. The latest validated render used R 4.6.1, rmarkdown 2.32, knitr 1.52, ggplot2 4.0.3 and lmtest 0.9-40.
@@ -30,7 +32,7 @@ make html
 Rscript --vanilla -e 'rmarkdown::render("main.Rmd", output_file = "main.html", envir = new.env())'
 ```
 
-The self-contained `main.html` is saved beside `main.Rmd` and is included in Git. Download it and open it in a browser to view the rendered analysis. RStudio's **Knit** button also works. These commands render the analysis document; `make report` compiles the LaTeX submission report, and `make all` runs both steps.
+The self-contained `main.html` is saved beside `main.Rmd` and is included in Git. Download it and open it in a browser to view the rendered analysis. RStudio's **Knit** button also works. These commands render the analysis document; `make report` compiles the LaTeX submission report, `make presentation` compiles the slides, and `make all` runs all three steps.
 
 The source reads `Station08.csv` relative to its own location. Empirical inference is recalculated on every render. By default, complete simulation checkpoints are reused only when their recorded settings match; missing or incompatible scenarios are recomputed. A fresh clone has no checkpoints and therefore runs the full experiment, which can take substantial time. To force a fresh simulation, run in R from the repository root:
 
@@ -91,12 +93,29 @@ make report
 
 This requires a LaTeX installation with `pdflatex` and `latexmk`; it does not run R. Alternatively, run `latexmk -pdf report.tex` inside `report/`. `make clean-report` removes LaTeX build intermediates while retaining the PDF. Rendering the Rmd does not automatically refresh the report's checked copies of tables, numbers or figures: after statistical changes, reconcile those inputs and the prose before recompiling.
 
+## Presentation
+
+[`presentation.tex`](presentation.tex) is a 16:9 Beamer deck with **ten main slides**, four technical backup slides and two reference pages (**16 pages total**). The main slides have speaker notes and a suggested speaking schedule totalling ten minutes. They cover the sample and gaps, linear diagnostics, the break search, bootstrap procedures, intervals, simulation results and qualified conclusions.
+
+Compile from the repository root with:
+
+```sh
+make presentation
+```
+
+This uses `pdflatex` and `latexmk` without running R. The resulting [`presentation.pdf`](presentation.pdf) uses the existing plots and numerical inputs under `report/figures/` and `report/tables/`; keep those folders with the source. Rendering the Rmd does not automatically refresh these checked inputs or the slide prose. After analysis changes, reconcile the report inputs, slides and code guide before recompiling.
+
+Before submission, replace the `\author{...}` field with the agreed group names, assign speakers and rehearse the timing. Notes are hidden in the normal PDF; change `\setbeameroption{hide notes}` to `\setbeameroption{show notes}` and recompile for a version containing the notes. Restore `hide notes` for the audience copy. `make clean-presentation` removes build intermediates while retaining the PDF.
+
 ## Repository guide
 
 | File or folder | Purpose |
 | --- | --- |
 | [`main.Rmd`](main.Rmd) | Primary explained analysis for Parts I–III |
 | [`main.html`](main.html) | Knitted analysis with code, results and embedded plots |
+| [`CODE_GUIDE.md`](CODE_GUIDE.md) | Chunk-by-chunk code explanations and execution reference |
+| [`presentation.tex`](presentation.tex) | Beamer slides, speaker notes and technical backups |
+| [`presentation.pdf`](presentation.pdf) | Compiled presentation |
 | [`report/report.tex`](report/report.tex) | LaTeX submission report source |
 | [`report/report.pdf`](report/report.pdf) | Compiled submission report |
 | [`report/tables/`](report/tables/) | All numerical inputs required by the TeX source |
@@ -105,7 +124,7 @@ This requires a LaTeX installation with `pdflatex` and `latexmk`; it does not ru
 | [`Station08_metadata.pdf`](Station08_metadata.pdf) | Station details, variable definition and source |
 | [`CMEAssignment2026Handout.pdf`](CMEAssignment2026Handout.pdf) | Assignment requirements |
 | [`TODO.md`](TODO.md) | Completed work and remaining group/submission tasks |
-| [`Makefile`](Makefile) | Commands for HTML rendering and PDF compilation |
+| [`Makefile`](Makefile) | Commands for HTML rendering, report and presentation compilation |
 
 ## Previous version
 

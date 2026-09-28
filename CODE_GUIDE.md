@@ -1,0 +1,644 @@
+# Code guide for main.Rmd
+
+This is the human-readable companion to [main.Rmd](main.Rmd). It explains the **49 executable R chunks in their actual order**, including the objects they depend on and the outputs they create. It describes the current implementation, rather than introducing a second version of the analysis.
+
+Reviewed: **29 September 2026**. The source and rendered [main.html](main.html) remain authoritative. Chunk names are stable navigation labels; line links refer to the version reviewed here and can move after edits. Search the chunk name in RStudio if a line link becomes stale.
+
+## How to read and run the project
+
+1. Read the sample/time definitions and Part I diagnostics first (chunks 1–16).
+2. Follow the broken-trend search, bootstrap tests and confidence intervals (17–39).
+3. Read the artificial-data experiment separately from the empirical analysis (40–46).
+4. Inspect the independent checks and session information (47–49).
+
+Run `make html` from the repository root, or use RStudio's Knit button. Knitting executes chunks from top to bottom in a fresh render environment. Most chunks depend on earlier objects, so running one in isolation is often insufficient. Explanatory paragraphs also contain inline R expressions, which calculate displayed numbers but do not appear in the chunk inventory.
+
+The YAML header controls HTML layout and two parameters:
+
+| Parameter | Default | Effect |
+| --- | --- | --- |
+| `recompute_simulation` | `false` | Reuse only complete scenario checkpoints with matching recorded settings. With no usable checkpoint, compute the scenario. |
+| `workers` | `4` | Request up to four available workers on macOS/Linux; Windows uses the sequential branch. |
+
+Empirical inference reruns on every knit. To force fresh simulation too, use `rmarkdown::render("main.Rmd", params = list(recompute_simulation = TRUE, workers = 4))`. A full render can be expensive because the simulation contains 11,976,000 bootstrap samples.
+
+## Data, time and important objects
+
+The only temperature input is `Station08.csv`, with columns `Year` and `Temperature`. The analysis retains all **226 observations**, including 2010–2013, and imputes nothing. There are 35 missing calendar years across five gaps. The year jump from 1980 to 2010 is 30 years, containing 29 absent years.
+
+| Object | Meaning and shape |
+| --- | --- |
+| `dat`, `n` | Validated observed data and its 226-row sample size |
+| `year`, `y`, `x` | Observed years, temperatures and displayed decade-scaled time |
+| `trend_model` / `m0`, `e0` | Linear fit and its residual vector |
+| `design` | Reusable break-search matrices and candidate grid |
+| `m1`, `e1`, `theta` | Displayed broken fit, residuals and the two regime slopes |
+| `fast` | Same observed break fit through the reusable fast helper |
+| `btests`, `draws` | Five empirical test rows and three primary null-draw distributions |
+| `coefstar`, `sestar`, `breakyears` | 4,999 alternative-bootstrap slope estimates, standard errors and reselected dates |
+| `cis`, `dg` | Four confidence-interval rows and two diagnostic rows |
+| `simulation`, `sim` | Simulation result list and its 24-row summary |
+
+**Two centring conventions coexist deliberately.** The displayed regressions use `(Year - 1850)/10`. `prepare_design()` uses `(year - mean(year))/10` internally. Translation leaves hinge differences, slopes, fits and the break statistic unchanged, but changes the intercept. Never report `fast$coef["intercept"]` as the 1850 intercept. `coef(m1)[1]` has that interpretation here because the selected break, 1851, occurs after 1850.
+
+**Names depend on scope.** `M` is a residual-maker matrix in the DW chunk but the dataset count inside `run_simulation()`. `H` is the DW hat matrix globally but a hinge matrix inside `prepare_design()`. The validation chunk reuses names such as `x` and `summary`. These are reasons to knit in order rather than treat every chunk as a standalone script.
+
+## Common R expressions in these chunks
+
+| Expression | Read it as |
+| --- | --- |
+| `A %*% B` | Matrix multiplication, following the row/column dimensions |
+| `crossprod(A, B)` | The matrix product `t(A) %*% B`; with one argument, `t(A) %*% A` |
+| `colSums(Z^2)` | A sum of squares for each column, often one RSS per bootstrap draw |
+| `sweep(Z, 2, v, "-")` | Subtract a different element of `v` from each column of `Z` |
+| `pmax(0, x - x[k])` | The hinge: zero up to the candidate date, increasing afterwards |
+| `drop = FALSE` | Keep a subset as a matrix even when it has only one row/column |
+| `lm.fit(X, y)` | Fit OLS directly from a supplied design matrix, avoiding formula overhead |
+| `match(year + lag, year)` | Locate observed partners exactly that many calendar years later |
+| `sapply()` / `lapply()` | Apply a function repeatedly; return a simplified result / a list |
+| `saveRDS()` / `readRDS()` | Save and restore one R object, including lists and matrices |
+
+In an n × B bootstrap error matrix, rows are observed years and columns are separate bootstrap samples. R stores/recycles vectors by columns here: multiplying a matrix by the n-element residual vector applies that same residual scale to each draw. The simulation's outer loop instead creates a new artificial dataset before running its inner bootstrap tests.
+
+## Mathematical map
+
+### Linear trend and the two DW definitions
+
+With observed calendar years $s_i$, the displayed model uses $x_i=(s_i-1850)/10$ and $y_i=\beta_0+\beta_1x_i+\varepsilon_i$. Slopes are °C per decade. For residuals $e$, the primary statistic is $d=\sum_{i=2}^n(e_i-e_{i-1})^2/\sum_i e_i^2$. The sensitivity version keeps only numerator pairs with $s_i-s_{i-1}=1$.
+
+Under the specified iid Gaussian null, $e^*=M_Xz$ with $z\sim N(0,I)$ removes the regression coefficients, and the error scale cancels from the ratio. Both definitions use the same simulated residual vectors but their own statistic and cutoffs. With B = 9,999, type-6 tail cutoffs and strict inequalities match the corrected two-sided rank p-value rule. This exactness concerns that null and design, not all serially uncorrelated distributions.
+
+BP instead regresses squared residuals on time and reports $nR^2$ with a nominal chi-squared(1) reference. Its alternative is narrow, and residual dependence qualifies that reference. A fully specified iid Gaussian BP calibration would be possible, but is not implemented as the reported BP test.
+
+### Why the fast break search equals repeated OLS
+
+At candidate k, append $h_k=(x-x_k)_+$ to the null design $X_0=[1,x]$. Let $v_k=M_0h_k/\|M_0h_k\|$. The reduction in RSS is
+
+$$RSS_0-RSS_k=(v_k'y)^2=(v_k'e_0)^2.$$
+
+The helper precomputes all $v_k$ columns once. A matrix multiplication evaluates every candidate and every bootstrap column. The reported statistic is $F_T=\max_k(RSS_0-RSS_k)$, in °C². It is a raw improvement, despite the name F. The null fitted mean lies in the columns of $X_0$, so adding it to bootstrap errors cannot change these projections. Explicit OLS checks verify this shortcut.
+
+### Break tests and slope intervals use different generating models
+
+| Feature | Break test | Slope confidence intervals |
+| --- | --- | --- |
+| Mean used to generate a sample | Fitted linear null | Fitted broken alternative |
+| Residuals | `e0` | `e1` |
+| Residual rescaling | $\sqrt{n/(n-2)}$ | $\sqrt{n/(n-3)}$ |
+| Draws | 9,999 per method/bandwidth | 4,999 DWB draws |
+| Break search | Repeated in every draw | Repeated in every draw |
+| Summary | Tail probability for raw RSS gain | Percentile and percentile-t intervals |
+
+DWB multiplies residuals by Gaussian weights whose correlation decays as $\exp(-|s_i-s_j|/\ell)$. The primary bandwidth is six calendar years. This preserves observation-specific scale and approximates dependence; it neither imputes temperatures nor guarantees size/coverage for the unknown-break problem. Restricted residuals may contain mean misspecification, and bandwidth effects need not be monotonic.
+
+For each slope, the percentile-t interval is
+
+$$[\widehat\theta-q_{.975}(t^*)\widehat s,\;\widehat\theta-q_{.025}(t^*)\widehat s],\qquad t^*=(\widehat\theta^*-\widehat\theta)/s^*.$$
+
+The HAC calculation uses a four-column local Jacobian, including the date direction, and observed pairs separated by at most six calendar years. Its correction is $n/(n-4)$, which serves a different role from residual rescaling. Rescaling the date derivative to an indicator preserves slope covariance for a nonzero kink. Weak identification can still undermine coverage, and no CI coverage experiment is included.
+
+## Chunk-by-chunk reference
+
+Each entry gives **inputs**, **calculation** and **outputs/interpretation**. Output paths below are relative to `work/main_rmd_run/`, unless explicitly identified as repository paths.
+
+## Sample and Part I
+
+### 01. `setup`
+
+[Source chunk](main.Rmd#L43)
+
+**Inputs:** The document path, YAML parameters and installed R packages.
+
+**Calculation:** Finds `project_root`, creates the output folders, and sets knitr's working directory to `artifact_root`. Sets plot options and shared colours. `fmt()` formats numbers for prose; `write_csv()` writes tables without row numbers. `include=FALSE` hides this chunk's code and output in HTML but still executes it.
+
+**Outputs and interpretation:** `project_root`, `artifact_root`, the colour variables and formatting/export helpers. Relative paths in later chunks resolve under `work/main_rmd_run/`, while the input CSV is explicitly read from the repository root.
+
+### 02. `load-data`
+
+[Source chunk](main.Rmd#L111)
+
+**Inputs:** `Station08.csv` and the project path.
+
+**Calculation:** Sets `master_seed = 20260926`, loads ggplot2, checks exact column names, 226 complete finite rows and unique years, sorts by year, and verifies increasing time. `stopifnot()` stops the render if a requirement fails instead of silently removing data.
+
+**Outputs and interpretation:** `dat` and `n = 226`. All supplied temperatures remain, including 2010–2013.
+
+### 03. `gap-detection`
+
+[Source chunk](main.Rmd#L134)
+
+**Inputs:** Sorted `dat$Year`.
+
+**Calculation:** Builds the complete annual grid and uses `setdiff()` to find absent years. Differences above one identify breaks between observed years. For example, `2010 - 1980 = 30`, so that pair has 29 missing years between it.
+
+**Outputs and interpretation:** `full_years`, `missing_years`, `gap_table` and `big_gap`. There are five gaps and 35 missing years. The grid records missingness; it does not fill temperatures.
+
+### 04. `segment-and-t`
+
+[Source chunk](main.Rmd#L184)
+
+**Inputs:** Observed years and their consecutive differences.
+
+**Calculation:** Increments `dat$segment` after each gap, preventing observed-data lines from crossing unobserved intervals. Defines `dat$t = (Year - 1850) / 10`.
+
+**Outputs and interpretation:** Plot groups and the regression time variable. A unit of `t` is a decade. At 1850, `t = 0`, which determines the reported intercept's interpretation.
+
+### 05. `explore-plot`
+
+[Source chunk](main.Rmd#L194)
+
+**Inputs:** `dat`, `segment`, `big_gap` and shared colours.
+
+**Calculation:** Plots observed temperatures with points and within-segment lines, shading the largest gap. The shading is a missing-data marker, not an estimated interval.
+
+**Outputs and interpretation:** The exploratory figure in the HTML and `knitr_figures/explore-plot-1.png`. It changes no data or model objects.
+
+### 06. `explore-stats`
+
+[Source chunk](main.Rmd#L210)
+
+**Inputs:** Observed temperatures and years.
+
+**Calculation:** Prints the range, five coldest/warmest years and raw standard deviations before/from 1900. Nearby inline R expressions also compute period means and extreme-year summaries.
+
+**Outputs and interpretation:** Descriptive console/HTML output. Raw temperature variability contains mean-trend movement and cannot alone identify changing error variance.
+
+### 07. `ols-fit`
+
+[Source chunk](main.Rmd#L275)
+
+**Inputs:** `dat$Temperature` and `dat$t`.
+
+**Calculation:** Fits `lm(Temperature ~ t)`, prints the regression summary and coefficients, and converts the slope to degrees per century by multiplying by ten.
+
+**Outputs and interpretation:** `trend_model`, `beta0_hat = 9.4481` and `beta1_hat = 0.0337` at displayed precision. The intercept is fitted temperature in 1850. The printed conventional OLS standard errors are not adopted as valid inference under the detected dependence.
+
+### 08. `ols-plot`
+
+[Source chunk](main.Rmd#L291)
+
+**Inputs:** The observations and fitted linear model.
+
+**Calculation:** Adds the OLS fitted line to the observed series, with separate observation segments and gap shading. A fitted line over a gap is a model prediction, not recovered observations.
+
+**Outputs and interpretation:** `knitr_figures/ols-plot-1.png` and its HTML figure.
+
+### 09. `residuals`
+
+[Source chunk](main.Rmd#L331)
+
+**Inputs:** `trend_model`.
+
+**Calculation:** Stores observed-minus-fitted errors and their squares. Residuals are estimated errors, not observed innovations.
+
+**Outputs and interpretation:** `dat$residual` and `dat$residual_sq`, used by the plots, DW and BP.
+
+### 10. `resid-time-plot`
+
+[Source chunk](main.Rmd#L338)
+
+**Inputs:** Residuals, calendar years, segment labels and the largest gap.
+
+**Calculation:** Plots residuals around a zero reference, breaking connecting lines at gaps. Runs of similarly signed residuals motivate checking dependence and the mean specification.
+
+**Outputs and interpretation:** `knitr_figures/resid-time-plot-1.png`. This visual diagnostic does not establish the source of dependence.
+
+### 11. `acf-compare`
+
+[Source chunk](main.Rmd#L375)
+
+**Inputs:** Residuals and the complete calendar grid.
+
+**Calculation:** Computes `acf_naive` by observed-row lag. Separately inserts `NA` at missing years and computes `acf_gap` with `na.action = na.pass`, preserving calendar lag. Resets the two-panel graphics layout after plotting.
+
+**Outputs and interpretation:** Both ACF objects, lag-one values about 0.290 and 0.302, and `knitr_figures/acf-compare-1.png`. No values are imputed. With missing years, available-pair ACFs need not define a valid autocorrelation sequence, and the reference bands are descriptive.
+
+### 12. `variance-plot`
+
+[Source chunk](main.Rmd#L405)
+
+**Inputs:** Squared linear-model residuals and calendar years.
+
+**Calculation:** Plots squared residuals and a LOESS smooth with no confidence ribbon. The caption explicitly qualifies the smooth over the missing interval.
+
+**Outputs and interpretation:** `knitr_figures/variance-plot-1.png`. The curve suggests possible variance patterns but supplies no observations inside a gap and is not a variance test.
+
+### 13. `qq-plot`
+
+[Source chunk](main.Rmd#L430)
+
+**Inputs:** Linear-model residuals.
+
+**Calculation:** Compares ordered residuals with normal quantiles and adds `qqline()` as a reference.
+
+**Outputs and interpretation:** `knitr_figures/qq-plot-1.png`. The marginal comparison cannot verify Gaussianity, independence or constant variance.
+
+### 14. `dw-define`
+
+[Source chunk](main.Rmd#L467)
+
+**Inputs:** Residuals and sorted calendar years.
+
+**Calculation:** Defines `dw_naive_stat(e) = sum(diff(e)^2) / sum(e^2)`. This observation-adjacent formula is the primary assigned statistic despite the legacy word `naive`. For the sensitivity statistic, `Dmat` retains only differences between consecutive calendar years and `A_gap = crossprod(Dmat)` gives the quadratic form.
+
+**Outputs and interpretation:** `d_obs = 1.4147`, `d_obs_gap = 1.3865`, `valid_pairs`, `Dmat` and `A_gap`. There are 225 observation-adjacent pairs and 220 calendar-adjacent pairs. `d_obs <- d_obs_naive` explicitly selects the primary definition.
+
+### 15. `dw-mc-test`
+
+[Source chunk](main.Rmd#L531)
+
+**Inputs:** The OLS design `X`, the two DW functions, observed statistics and master seed.
+
+**Calculation:** Forms the hat matrix and residual maker `M = I - H`. For 9,999 standard-normal vectors it computes projected residuals and both statistics. Each definition gets its own type-6 tail cutoffs and a two-sided plus-one p-value. The optional `lmtest::dwtest()` comparison explicitly requests a two-sided alternative.
+
+**Outputs and interpretation:** `d_sim`, `d_sim_gap`, `dw_results`, cutoffs and p-values. Primary cutoffs are 1.7549 and 2.2695; both p-values are 0.0002. Strict outside-cutoff rejection matches `p <= 0.05` for this continuous iid Gaussian reference. This is not an exact test of every process with zero first-order correlation.
+
+### 16. `bp-test`
+
+[Source chunk](main.Rmd#L605)
+
+**Inputs:** `dat$residual_sq`, `dat$t` and `n`.
+
+**Calculation:** Fits the auxiliary regression `residual_sq ~ t`, computes `BP_stat = n * R2_aux`, and obtains the upper-tail chi-squared(1) probability. Optionally compares with `lmtest::bptest()`.
+
+**Outputs and interpretation:** `aux_model`, `R2_aux`, `BP_stat = 0.4173` and `p_val_bp = 0.5183`. This is the requested studentised nR² form. Non-rejection against a linear variance trend does not establish homoskedasticity, and serial dependence qualifies its nominal reference.
+
+## Part II: break search and bootstrap inference
+
+### 17. `part2-setup`
+
+[Source chunk](main.Rmd#L710)
+
+**Inputs:** Part I objects and YAML `params`.
+
+**Calculation:** Creates shorter aliases for the observed series, regression and diagnostics, sets empirical and simulation replication counts, and checks the parameters. Caps the requested workers at the detected core count.
+
+**Outputs and interpretation:** `year`, `y`, `x`, `m0`, `e0`, `seed`, `B_test = 9999`, `B_ci = 4999`, `simulation_M = 1000`, `simulation_B = 499` and `workers`. Here `x` is centred at 1850.
+
+### 18. `part2-plot-helpers`
+
+[Source chunk](main.Rmd#L737)
+
+**Inputs:** Shared palette, observed years and output directories.
+
+**Calculation:** `plot_pair()` calls the same drawing function twice to save PDF and PNG. `setup()` applies common base-R styling. `series_lines()` finds consecutive-year runs before drawing lines.
+
+**Outputs and interpretation:** Three plotting helpers. `setup()` is a function name here, separate from the earlier chunk label `setup`. These helpers change presentation, not estimates.
+
+### 19. `prepare-break-design`
+
+[Source chunk](main.Rmd#L796)
+
+**Inputs:** A strictly increasing numeric `year` vector and trimming proportion, normally 0.15.
+
+**Calculation:** Defines `prepare_design()`. It centres time at the mean observed year internally, forms the intercept/trend design `X0`, and obtains its orthonormal basis `Q0` by QR decomposition. It constructs a hinge at each candidate, removes the linear-design component, and normalises the remaining hinge columns.
+
+**Outputs and interpretation:** A `break_design` list with `X0`, `Q0`, `H`, `Qhinge`, candidate indices and years. Trimming gives indices 34–192 in the full sample. Internal mean-centring changes an intercept but leaves the hinge, fitted values, slopes and RSS gains unchanged.
+
+### 20. `break-statistic-and-fit`
+
+[Source chunk](main.Rmd#L826)
+
+**Inputs:** An outcome vector or matrix and a prepared design.
+
+**Calculation:** `break_statistics()` projects outcomes off the null design and computes squared projections onto every normalised residual hinge. Their maximum is the raw RSS reduction; ties select the first candidate. A tiny floor protects RSS1 against numerical roundoff. `fit_break()` then performs `lm.fit()` at the selected hinge and returns coefficients, fitted values and residuals for both models.
+
+**Outputs and interpretation:** `break_statistics()` returns one result per outcome column. `fit_break()` returns a selected index/year, `pre`, `delta`, `post`, RSS values and fits. `studentized_F` is also calculated but is not the statistic used in the reported tests. Helper intercepts use the design's mean-year reference, not the displayed 1850 reference.
+
+### 21. `search-observed-break`
+
+[Source chunk](main.Rmd#L860)
+
+**Inputs:** The observed series and `prepare_design()`/`fit_break()`.
+
+**Calculation:** Runs an explicit `lm()` at every candidate using the displayed time variable, selects the smallest RSS, fits `m1`, and compares the raw improvement with the fast projection result. This makes the optimisation independently checkable.
+
+**Outputs and interpretation:** `design`, `candidates`, `rss`, `k = 99`, `h`, `X1`, `m1`, `e1`, `theta`, `Fobs` and `fast`. The selected year is 1851, the raw gain is 12.2106, and pre/post slopes are −0.0525/+0.0887 °C per decade. `m1` uses the 1850 intercept reference.
+
+### 22. `break_profile-plot`
+
+[Source chunk](main.Rmd#L916)
+
+**Inputs:** Candidate years and the observed RSS grid.
+
+**Calculation:** Plots the full objective curve and marks its minimum.
+
+**Outputs and interpretation:** PDF and PNG copies of `figures/break_profile`. The minimum describes the selected date; bootstrap calibration is still needed to assess whether the gain is unusual under no break.
+
+### 23. `temperature_fits-plot`
+
+[Source chunk](main.Rmd#L930)
+
+**Inputs:** Observed temperatures, `m0`, `m1`, the selected date and shared plot helpers.
+
+**Calculation:** Overlays the linear and broken fitted trends, shades the largest gap and draws observed lines only within contiguous runs.
+
+**Outputs and interpretation:** `figures/temperature_fits.pdf` and `.png`. Fitted curves may cross gaps as model implications, while observed lines do not.
+
+### 24. `dependent-wild-weights`
+
+[Source chunk](main.Rmd#L1033)
+
+**Inputs:** A design containing calendar years, a draw count B and bandwidth `ell`.
+
+**Calculation:** Defines `dwb_weights()`. It starts independent N(0,1) columns and recursively correlates each column using `a_i = exp(-calendar_gap / ell)` and innovation multiplier `sqrt(1 - a_i^2)`. Every column is an independent bootstrap multiplier path.
+
+**Outputs and interpretation:** An n × B matrix of unit-variance multipliers with covariance `exp(-abs(year_i - year_j) / ell)`. A 30-year gap has much weaker multiplier dependence than a one-year gap. `ell` is a chosen dependence horizon, not an estimated AR coefficient.
+
+### 25. `bootstrap-error-generator`
+
+[Source chunk](main.Rmd#L1044)
+
+**Inputs:** Residuals `e`, years, B, method, bandwidth and a degrees-of-freedom count.
+
+**Calculation:** Defines `bootstrap_errors()`. It centres residuals and multiplies by `sqrt(n/(n-df))`. IID draws sample residuals with replacement; independent wild multiplies each residual by an independent ±1 sign; DWB multiplies by the correlated Gaussian weights.
+
+**Outputs and interpretation:** An n × B error matrix, one sample per column. Tests use null residuals and `df = 2`. Intervals use broken-model residuals and `df = 3`. The residual correction is a finite-sample scaling choice, not a guarantee of correct size or coverage.
+
+### 26. `bootstrap-test-function`
+
+[Source chunk](main.Rmd#L1175)
+
+**Inputs:** An outcome, prepared design, methods, B, bandwidth, level and optional seed.
+
+**Calculation:** Defines reusable `bootstrap_break()`. Fits the observed null/alternative, generates errors from null residuals, evaluates the full break search on each column, computes upper-tail plus-one p-values and type-1 critical values, and decides by `p <= level`. Null fitted values need not be explicitly added because the projection removes them.
+
+**Outputs and interpretation:** The observed fit and a named method-results list, optionally including bootstrap statistics. Its default B is 999, but the simulation explicitly requests 499. The separate empirical loop uses 9,999. Method draws consume the RNG in the order IID, wild, DWB.
+
+### 27. `empirical-bootstrap-tests`
+
+[Source chunk](main.Rmd#L1207)
+
+**Inputs:** Observed null residuals `e0`, `design`, `Fobs`, `B_test` and `seed`.
+
+**Calculation:** Runs the three primary methods with seed offsets +101/+102/+103, storing their statistics in `draws`. Runs DWB bandwidths 3 and 12 with offsets +203/+212. All samples use null residuals and repeat the complete candidate search.
+
+**Outputs and interpretation:** Five-row `btests` and `tables/bootstrap_tests.csv`. IID/wild p-values are 0.0001; DWB at 6/3/12 gives 0.0331/0.0206/0.0541. `draws` contains only the three primary distributions, not the extra bandwidth runs.
+
+### 28. `bootstrap-test-table`
+
+[Source chunk](main.Rmd#L1239)
+
+**Inputs:** `btests`.
+
+**Calculation:** Adds readable procedure names and decisions using the p-value rule, then formats the selected columns with `knitr::kable()`.
+
+**Outputs and interpretation:** The HTML results table. The underlying computations and saved test table remain unchanged.
+
+### 29. `bootstrap_null-plot`
+
+[Source chunk](main.Rmd#L1283)
+
+**Inputs:** The three primary null distributions in `draws` and `Fobs`.
+
+**Calculation:** Draws kernel density estimates and an observed-statistic reference line. The horizontal range uses high quantiles to keep the relevant comparison readable.
+
+**Outputs and interpretation:** `figures/bootstrap_null.pdf` and `.png`. Smoothed curves are visual summaries; rejection probabilities come from tail counts, not from integrating these displayed densities.
+
+### 30. `calendar-hac-standard-errors`
+
+[Source chunk](main.Rmd#L1363)
+
+**Inputs:** Years, a four-column local design/Jacobian `X`, residuals and maximum calendar lag L, normally six.
+
+**Calculation:** Defines `calendar_hac_se()`. Uses the pre/post contrasts `(0,1,0,0)` and `(0,1,1,0)`, computes their influence contributions, and adds lagged cross-products only for observed pairs exactly 1–6 years apart. Bartlett weights are `1 - lag/(L+1)`, with correction `n/(n-p)`.
+
+**Outputs and interpretation:** Two standard errors, one for each slope. Calls include an indicator fourth column representing a rescaled local break-date derivative, so p = 4. This is a local approximation for a nonzero kink and can be unreliable under weak date identification.
+
+### 31. `confidence-interval-refits`
+
+[Source chunk](main.Rmd#L1385)
+
+**Inputs:** Broken-fit residuals `e1`, fitted alternative, design and B_ci.
+
+**Calculation:** With seed +301, generates 4,999 DWB error columns at bandwidth six and `df = 3`, adds the fitted broken mean, reselects the date in each column, refits both slopes and recomputes HAC standard errors including the local date column.
+
+**Outputs and interpretation:** `Ystar`, `coefstar` and `sestar` (4,999 × 2), `breakyears` and observed `seobs`. The raw bootstrap errors use the alternative here, unlike the break tests.
+
+### 32. `construct-confidence-intervals`
+
+[Source chunk](main.Rmd#L1412)
+
+**Inputs:** Observed slopes `theta`, bootstrap slopes, observed and bootstrap standard errors.
+
+**Calculation:** Forms `tstar = (theta_star - theta_hat) / se_star`. Percentile limits are slope quantiles. Percentile-t limits reverse the t quantiles before subtracting them from the observed estimate. All interval quantiles use type 7.
+
+**Outputs and interpretation:** Four-row `cis`, `tables/confidence_intervals.csv` and the HTML interval table. Both pre-break intervals include zero and both post-break intervals exclude zero. They condition on the fitted broken-trend specification and do not separately test break existence.
+
+### 33. `slope_intervals-plot`
+
+[Source chunk](main.Rmd#L1434)
+
+**Inputs:** `cis`.
+
+**Calculation:** Draws each interval horizontally, its slope estimate and a vertical zero reference.
+
+**Outputs and interpretation:** `figures/slope_intervals.pdf` and `.png`. Colours distinguish percentile and percentile-t methods.
+
+### 34. `break_bootstrap_distribution-plot`
+
+[Source chunk](main.Rmd#L1453)
+
+**Inputs:** The reselected years from the alternative-model bootstrap.
+
+**Calculation:** Groups the years into five-year histogram bins and marks the observed estimate.
+
+**Outputs and interpretation:** `figures/break_bootstrap_distribution.pdf` and `.png`. The distribution shows date variability under the fitted alternative, not a separately calibrated confidence set.
+
+### 35. `date-variation-summary`
+
+[Source chunk](main.Rmd#L1466)
+
+**Inputs:** `breakyears` and the admissible date boundaries.
+
+**Calculation:** Calculates date percentiles and the share of bootstrap estimates exactly at either trimming boundary.
+
+**Outputs and interpretation:** An HTML summary with 2.5%/97.5% date percentiles 1793/1896 and about 1.54% at the boundaries. These are descriptive summaries.
+
+### 36. `model-comparison`
+
+[Source chunk](main.Rmd#L1487)
+
+**Inputs:** Observed fits `m0`/`m1`, `n` and the time regressor.
+
+**Calculation:** Defines `diagnostic()` and applies it to both fits. Collects RSS, RMSE, R², adjusted R², observation-lag ACF(1), ordinary DW and nominal BP statistics.
+
+**Outputs and interpretation:** `dg`, `tables/model_diagnostics.csv` and the HTML comparison. Searching the date changes inference: the Part I DW cutoffs cannot simply be applied to `m1`, and ordinary adjusted R² does not count the searched date.
+
+### 37. `diagnostics_broken-plot`
+
+[Source chunk](main.Rmd#L1526)
+
+**Inputs:** Broken-model residuals `e1` and calendar years.
+
+**Calculation:** Draws residual time points, an observation-lag ACF, squared residuals with LOWESS, and a QQ plot. This base-R LOWESS display differs from the earlier ggplot LOESS display.
+
+**Outputs and interpretation:** `figures/diagnostics_broken.pdf` and `.png`. Dependence decreases but remains visible; the ACF lags count observations.
+
+### 38. `sample-sensitivity`
+
+[Source chunk](main.Rmd#L1569)
+
+**Inputs:** The complete observed series and two explicit subsets.
+
+**Calculation:** Fits one reduced sample without 1851 and another ending in 1980, preparing and trimming each subset's own design and reselecting its break. It does not overwrite the primary data or rerun bootstrap inference.
+
+**Outputs and interpretation:** `sample_sensitivity` and `tables/sample_sensitivity.csv`. Selected dates become 1853 and 1850. These are point-estimate checks, not new significance tests.
+
+### 39. `empirical-output-tables`
+
+[Source chunk](main.Rmd#L1608)
+
+**Inputs:** All empirical estimates, fits, tests, intervals and stored date/slope draws.
+
+**Calculation:** Collects a named numerical summary, removes coefficient-name suffixes and exports the results needed to inspect or reuse the analysis. Saves an R list for access to richer objects.
+
+**Outputs and interpretation:** `tables/empirical_summary.csv`, `series_fits.csv`, `break_profile.csv`, `missing_years.csv`, `ci_draws.csv`, and `work/empirical_results.rds`. Other empirical tables were written in their own chunks. Report TeX inputs are checked copies, not automatically rewritten by this chunk.
+
+## Part III: Monte Carlo study
+
+### 40. `simulation-data-generator`
+
+[Source chunk](main.Rmd#L1671)
+
+**Inputs:** A design, slope change, AR coefficient, variance-profile flag and innovation scale.
+
+**Calculation:** Defines `simulate_broken_trend()`. Builds constant scales or a 0.5-to-1.5 linear scale profile normalised to mean squared scale one. Generates AR errors recursively, initialising the first error with `sigma_1 / sqrt(1-rho^2)`, then adds a continuous broken mean.
+
+**Outputs and interpretation:** One synthetic outcome vector. Here the design uses consecutive annual indices, not Geneva's gaps. Initialisation is stationary for constant scale and only local for varying scale. Fixing innovation variance does not fix marginal error variance across rho values.
+
+### 41. `wilson-interval`
+
+[Source chunk](main.Rmd#L1700)
+
+**Inputs:** Rejection count, dataset count and confidence level.
+
+**Calculation:** Defines `wilson_interval()`, a binomial score interval that remains informative for zero or complete rejection counts.
+
+**Outputs and interpretation:** Lower and upper Monte Carlo uncertainty limits. These concern simulation rejection frequencies, not uncertainty about a temperature slope.
+
+### 42. `simulation-engine`
+
+[Source chunk](main.Rmd#L1724)
+
+**Inputs:** M, B, n, sigma, master seed, worker count and checkpoint paths.
+
+**Calculation:** Defines `run_simulation()`. Prepares consecutive-year design, crosses delta ∈ {0,0.14}, rho ∈ {0,0.4} and constant/increasing scale, and processes eight scenarios. A complete matching checkpoint can be reused. Otherwise each dataset gets seed `seed + 100000*scenario + replication`, and all three tests use that same dataset. Parallel workers have independent deterministic dataset seeds.
+
+**Outputs and interpretation:** An 8,000-row raw result set, 24 method/scenario summaries, configuration checkpoints, `tables/simulation_summary.csv` and `work/simulation/simulation_results.rds`. It reports counts, rejection rates, MC SEs and Wilson intervals. A failed worker prevents saving an incomplete scenario. See the cache warning below when changing methods.
+
+### 43. `run-simulation`
+
+[Source chunk](main.Rmd#L1838)
+
+**Inputs:** Empirical residual scale, YAML options and `run_simulation()`.
+
+**Calculation:** Optionally copies compatible legacy checkpoints into the current output folder if a target is absent. Sets `sigma = sqrt(fast$RSS1/(n-3))`, calls the engine with M = 1,000 and B = 499, and requests fresh computation when `recompute_simulation = TRUE`.
+
+**Outputs and interpretation:** `simulation` and its summary alias `sim`. Prints the eight scenarios and computation totals. Empirical calibration gives sigma ≈ 0.6182. A fresh clone has no checkpoints and computes all scenarios.
+
+### 44. `simulation-results-table`
+
+[Source chunk](main.Rmd#L1877)
+
+**Inputs:** `sim` and method names.
+
+**Calculation:** Places each scenario on one row, orders method columns consistently and converts rejection proportions to percentages.
+
+**Outputs and interpretation:** `simulation_comparison` and the HTML size/power table. Odd-numbered scenarios have delta = 0 and assess size; even-numbered scenarios have delta = 0.14 and assess power.
+
+### 45. `simulation-results-plot`
+
+[Source chunk](main.Rmd#L1914)
+
+**Inputs:** Scenario rejection rates and Wilson limits.
+
+**Calculation:** Plots size and power separately, with method-specific colours and vertical Monte Carlo uncertainty intervals. The size panel includes the 5% reference.
+
+**Outputs and interpretation:** `figures/simulation_results.pdf` and `.png`. The power axis begins at 60%, whereas the size axis begins at zero. These are different quantities and scales, not panels for comparing absolute heights.
+
+### 46. `simulation-uncertainty-table`
+
+[Source chunk](main.Rmd#L1948)
+
+**Inputs:** All 24 summary rows.
+
+**Calculation:** Displays rejection counts, percentages, standard errors and Wilson limits. Multiplication by 100 turns an MC standard error into percentage points.
+
+**Outputs and interpretation:** `uncertainty_table` and a detailed HTML table. The estimates reuse the engine's calculations rather than running another experiment.
+
+## Independent checks and session record
+
+### 47. `part1-independent-checks`
+
+[Source chunk](main.Rmd#L2039)
+
+**Inputs:** Original CSV, observed fits, recorded DW draws and BP results.
+
+**Calculation:** Checks sample identity and gap counts, verifies centring invariance, replays the seeded normal draws through an independent QR residual projection, and checks BP against the simple-regression identity `n * cor(residual_sq, t)^2`.
+
+**Outputs and interpretation:** `tables/dw_comparison.csv` and `outputs/part1_validation.txt`. Each claim is guarded by a numerical assertion. The supplied CSV is already sorted; the exact identity check relies on that supplied ordering.
+
+### 48. `independent-validation`
+
+[Source chunk](main.Rmd#L2073)
+
+**Inputs:** Source data, saved empirical tables, simulation draws and reusable functions.
+
+**Calculation:** Checks fast search against brute-force regressions and 21 full bootstrap-series regressions using seed 320926. Reconstructs all four intervals from 4,999 saved refits, checks empirical p-values, validates all simulation counts/rates/uncertainty formulas and replays dataset 1,000 from each scenario.
+
+**Outputs and interpretation:** `outputs/validation.txt`. It checks all 8,000 stored simulation records but reruns only one complete dataset per scenario, not the entire experiment. It also reassigns global names such as `x`, `y`, `draws` and `summary`, so do not rerun earlier plotting chunks blindly after this point.
+
+### 49. `session-record`
+
+[Source chunk](main.Rmd#L2189)
+
+**Inputs:** The active R session after all prior chunks.
+
+**Calculation:** Records R/platform/package information for reproduction.
+
+**Outputs and interpretation:** `outputs/sessionInfo.txt` and the HTML session listing. It helps explain differences between computing environments but is not a package lockfile.
+
+## Randomness and numerical conventions
+
+| Task | Seed | Replications / quantiles |
+| --- | --- | --- |
+| DW and its QR replay | `20260926` | B = 9,999, two-tailed type-6 cutoffs |
+| Empirical IID / wild / DWB tests | master + 101 / 102 / 103 | B = 9,999, type-1 95% critical value |
+| DWB bandwidth 3 / 12 | master + 203 / 212 | B = 9,999 |
+| Alternative-model intervals | master + 301 | B = 4,999, type-7 quantiles |
+| Bootstrap shortcut checks | `320926` | Seven draws for each of three methods |
+| Simulation dataset m in scenario c | master + 100000*c + m | M = 1,000, B = 499 per method |
+
+DW p-values double the smaller corrected tail probability and cap at one, so their minimum is 0.0002. Empirical break-test p-values use `(1 + exceedances)/(B + 1)`, with minimum 0.0001. Simulation break-test p-values have minimum 1/500 = 0.002. Equal minimum p-values only reflect limited resolution; they do not prove equal underlying tail probabilities or that heteroskedasticity is irrelevant.
+
+The complete experiment has 8,000 datasets and 24,000 tests. One dataset's three methods share the generated data, but consume different bootstrap random draws in a fixed order. Changing the method order can change later draws even with the same initial seed.
+
+## Files and reproduction boundaries
+
+| Location | Contents / ownership |
+| --- | --- |
+| `main.Rmd` | Authoritative executable analysis |
+| `main.html` | Knitted reading version, including embedded plots |
+| `work/main_rmd_run/figures/` | Seven analysis plots, each in PDF and PNG |
+| `work/main_rmd_run/knitr_figures/` | Six Part I figure files |
+| `work/main_rmd_run/tables/` | Eleven exported CSV tables, including individual CI draws |
+| `work/main_rmd_run/work/` | Empirical RDS results and simulation checkpoints/draws |
+| `work/main_rmd_run/outputs/` | Validation and session-information text files |
+| `report/tables/`, `report/figures/` | Checked report inputs copied from the analysis outputs |
+| `presentation.tex` | Beamer narrative with speaker notes, sharing report numbers and figures |
+
+`make html` runs the analysis. `make report` compiles the report, and `make presentation` compiles the slides. The TeX builds do not rerun R. Re-rendering the Rmd does not automatically update copied report inputs or narrative claims in either TeX document. After changing the analysis, reconcile those files before submission.
+
+**Cache maintenance:** scenario reuse checks an explicit settings/scenario signature and the saved row count. It does not compute a hash of every function body. If the generator, bootstrap implementation or other unrecorded statistical logic changes, force recomputation and update the engine version/signature as appropriate. Do not assume an unchanged filename means the saved draws remain valid.
+
+**What the checks establish:** numerical consistency, agreement with independent regression/projection calculations, correct reconstruction of intervals/tail counts and selected seed replay. They do not prove identification, error assumptions, bootstrap theory, confidence-interval coverage or representativeness of the Geneva record. The simulation uses consecutive years, so it does not establish performance under the actual missing-year pattern.
+
+## Before explaining the code to the group
+
+- Be able to distinguish a calendar year from an observation index and identify which each diagnostic uses.
+- Explain why the null mean disappears from the projected break statistic, while the interval bootstrap explicitly adds the fitted alternative.
+- State which residuals, degrees-of-freedom corrections and quantile types belong to each procedure.
+- Describe the difference between a selected descriptive break, a bootstrap test of break existence and slope intervals conditional on that specification.
+- Distinguish simulation size/power from empirical p-values, and Monte Carlo uncertainty from slope uncertainty.
+- Use the current chunk names when updating this guide after code edits. Recheck coverage if chunks are added or removed.
