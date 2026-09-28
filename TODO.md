@@ -1,70 +1,80 @@
 # Our project checklist
 
-Last updated: **26 September 2026**. The primary analysis is now [`main_part1_markdown.Rmd`](main_part1_markdown.Rmd). The [progress report](docs/progress.pdf) remains a 15 September historical snapshot. The Part I interpretation remains subject to the review items below.
+Last updated: **29 September 2026**. [`main.Rmd`](main.Rmd) contains the complete analysis for **Parts I–III**, and [`main.html`](main.html) is its knitted reading version. The refined [LaTeX report](report/report.tex), [PDF](report/report.pdf), tables and required figures are now together in `report/`. Historical progress files have been removed from the current checkout and remain in Git history.
 
-## Completed
+## Completed: data and Part I
 
-- [x] Load and inspect the supplied Geneva data.
-- [x] Sort observations and check complete Year/Temperature rows.
-- [x] Define `t = (Year - 1900) / 10`.
-- [x] Estimate the linear trend by OLS.
-- [x] Plot the temperature series and fitted trend.
-- [x] Produce residual time, ACF, squared-residual/LOESS and normal Q–Q plots.
-- [x] Calculate the earlier sequence-adjacent DW statistic: **1.4147**; retain it for comparison with the current calendar-adjacent statistic in the R Markdown report.
-- [x] Verify the earlier script in a clean R session, preserving its original estimates and six plots in the historical snapshot.
-- [x] Document the current findings, limitations and unfinished methods.
+- [x] Load, sort and validate all **226** supplied observations, with no missing cells or duplicated years.
+- [x] Retain the complete sample, including 2010–2013; document all **35 missing years across five gaps**, especially 1981–2009, without interpolation.
+- [x] Use actual calendar time, **`t = (Year - 1850) / 10`**; explain centring and verify that slopes, fits and test statistics are unchanged by the reference year.
+- [x] Estimate the linear OLS trend and plot observed temperatures and fitted values without joining observed lines across gaps.
+- [x] Produce residual time, observation-lag/calendar-lag ACF, squared-residual/LOESS and normal Q–Q plots, with their interpretation limits.
+- [x] Use the assignment's **observation-adjacent DW statistic (1.4147)** as primary and retain the **calendar-adjacent statistic (1.3865)** as a separately calibrated sensitivity check.
+- [x] Implement both two-sided DW Monte Carlo calibrations with **B = 9,999**, **alpha = 0.05**, master seed **20260926**, and the observed regression design under an iid Gaussian null.
+- [x] Use **type-6** DW critical values with strict outside-cutoff rejection and the matching two-sided plus-one rank p-value; explain the assumptions behind finite-sample exactness.
+- [x] Calculate **BP = nR²** from `residual_sq ~ t`, report the nominal chi-squared(1) p-value, and explain why non-rejection against a linear variance trend does not establish homoskedasticity.
+- [x] Clarify Question 6: squared residuals do not prevent BP simulation; a finite-sample Monte Carlo calibration requires a specified null error distribution. Explain the studentised BP convention and the effect of serial dependence on its usual calibration.
+- [x] Reconcile the integrated assessment with these assumptions; keep ordinary OLS significance output separate from justified inference.
 
-## Our next priorities: Part I
+## Completed: Part II, structural change and bootstrap inference
 
-- [x] Discuss the 35 missing years, especially 1981–2009.
-- [ ] Clarify whether the intended trend uses actual calendar time or a rescaled observation index.
-- [x] Distinguish the earlier sequence-adjacent ACF/DW from the calendar-aware calculations now used in the R Markdown document.
-- [x] Make missing periods explicit in temperature/residual plots and qualify LOESS across gaps; retain the full supplied sample.
-- [x] Specify the DW null error model and its assumptions.
-- [x] Implement the **two-sided DW Monte Carlo test with B = 9,999 and alpha = 0.05**, using the residual-maker projection equivalent to refitting the same design in each replication.
-- [x] Record separate lower/upper critical values, the two-sided Monte Carlo p-value convention, the seed and the conclusion.
-- [x] Fit the BP auxiliary regression `residual_sq ~ t` using the same transformed time variable.
-- [x] Report `BP = n * R_squared_aux`, its chi-squared(1) p-value and a qualified interpretation.
-- [x] Discuss how residual dependence affects the standard BP calibration.
-- [ ] Clarify Question 6: finite-sample simulation requires a specified null distribution; BP is not inherently impossible to calibrate by Monte Carlo. (BP's null doesn't assume the distribution of the errors, it just assumes constant variance over time, whereas DW's null already assumes normality, maybe...)(Santonio)
-- [ ] Review the integrated assessment drafted in the R Markdown document and reconcile its claims with the diagnostic assumptions.
-- [ ] Keep ordinary OLS significance output separate from validated inference; defer trend-significance conclusions as required.
+- [x] Explain and implement the continuous broken-trend model, distinguishing a slope change from a level jump.
+- [x] Search with **15% observation-count trimming**, candidates **34–192 (1786–1945)**, and plot the RSS profile.
+- [x] Report the best-fitting break (**1851**), raw RSS reduction (**12.2106**) and pre-break/change/post-break slopes in °C per decade.
+- [x] Implement IID residual, independent wild and calendar-aware dependent wild bootstrap procedures, with complete algorithms and diagnostics-based justification.
+- [x] Run **9,999** draws for every reported break test; generate under the linear null using restricted residuals and repeat the complete break search in each draw.
+- [x] Report primary DWB bandwidth **6** and sensitivities **3** and **12**, including the change from rejection at bandwidth 6 (**p = 0.0331**) to non-rejection at bandwidth 12 (**p = 0.0541**).
+- [x] Explain restricted-residual effects, finite p-value resolution and why bandwidth effects need not be monotonic.
+- [x] Construct percentile and percentile-t slope intervals from **4,999** alternative-model DWB draws, reselecting the break and recomputing calendar-time HAC standard errors.
+- [x] Qualify the slope intervals as conditional on the fitted broken-trend specification; describe reselected dates without claiming a calibrated break-date confidence set.
+- [x] Compare fit and residual diagnostics with the linear model, including the limits of adjusted R², BIC and post-selection DW interpretation.
+- [x] Run descriptive sensitivity checks omitting 1851 and ending the sample in 1980; retain all observations for primary results.
 
-## Part II: structural change and bootstrap inference
+## Completed: Part III, simulation study
 
-- [ ] Explain and implement the continuous broken-trend model.
-- [ ] Search candidate breaks with the required **15% trimming**, using a consistent time convention.
-- [ ] Plot RSS against candidate break year and report the best-fitting calendar break date.
-- [ ] Compute the observed reduction in RSS relative to the no-break model.
-- [ ] Select a primary bootstrap method and at least one sensitivity method, justified by residual diagnostics.
-- [ ] Write down each complete bootstrap algorithm before interpreting results.
-- [ ] Run at least **999 bootstrap replications** for the reported break tests.
-- [ ] Report pre-break, change-in-trend and post-break slopes in degrees Celsius per decade.
-- [ ] Construct equal-tailed percentile and percentile-t slope intervals, re-estimating the break in every replication.
-- [ ] Compare fit and residual diagnostics with the original linear trend.
+- [x] Specify eight no-break/break scenarios using the required DGP family, varying serial dependence and innovation-scale heteroskedasticity.
+- [x] Compare all three bootstrap procedures on the same generated datasets.
+- [x] Complete **1,000 Monte Carlo datasets per configuration** with **499 bootstrap draws per method**: 8,000 datasets and 24,000 tests in total.
+- [x] Record settings, scenario checkpoints and replication seeds independent of worker scheduling.
+- [x] Report size and power with Monte Carlo standard errors and 95% Wilson intervals.
+- [x] Explain independent-method over-rejection under serial dependence and DWB conservatism, without interpreting inflated size as superior power.
+- [x] State the experiment's limits: consecutive simulated years, one sample size, a central break and Gaussian innovations; no empirical-gap design or confidence-interval coverage experiment.
 
-## Part III: simulation study
+## Completed: reproducibility and report refinement
 
-- [ ] Specify coherent no-break and break scenarios from the required DGP family.
-- [ ] Vary at least two of the additional scenario dimensions in the handout.
-- [ ] Compare at least three distinct bootstrap procedures, covering independence, dependence and heteroskedasticity where applicable.
-- [ ] Plan at least **1,000 Monte Carlo replications per configuration** and **499 bootstrap replications within each**, or document computational constraints.
-- [ ] Set/report seeds, measure rejection rates for size and power, and explain what the comparison teaches us.
+- [x] Render the full Rmd and refresh `main.html` and its generated artifacts under `work/main_rmd_run/`.
+- [x] Verify sample/gap counts, centring invariance, both DW distributions by independent QR projection, and BP by an independent identity.
+- [x] Validate the optimised break search against explicit OLS, 21 bootstrap comparisons, both slope-interval constructions and empirical p-values.
+- [x] Validate all 8,000 stored simulation replications, 24 rejection frequencies, Monte Carlo standard errors and Wilson intervals; replay one complete seeded replication per scenario. This check is not a new full simulation run or a coverage study.
+- [x] Use a consistent colour palette throughout Parts I–III and distinguish descriptive evidence, fitted estimates and formal inference.
+- [x] Refine the LaTeX report using the Rmd as the source for explanations, numbers, plots and limitations.
+- [x] Preserve all **four original report references** and add **ten source entries**; verify citations and bibliography links in the source.
+- [x] Compile and visually check the revised report: **11 main-text pages**, within the **15-page limit**, and **20 pages overall** including title page, references and appendices.
+- [x] Rename the analysis to `main.Rmd`, rebuild the self-contained `main.html`, and include both as versioned deliverables.
+- [x] Bring the report, numerical inputs and required plots into the repository; verify that it compiles from its own folder.
+- [x] Remove obsolete progress files and `Rplots.pdf` from the current checkout, retaining Git history and local backups.
+- [x] Update the README, this checklist, build commands and ignore rules for the organised repository.
 
-## Reproducibility and group deliverables
+## Remaining group and submission work
 
-- [x] Use the R Markdown report as the primary entry point, rendered with `make report` in a clean R session.
-- [ ] Re-render `outputs/main_part1_markdown.html` and reconcile reported numbers after substantive changes; `docs/current-output.txt` and `Rplots.pdf` are historical snapshots.
-- [ ] Maintain consistent units, informative captions and clear distinctions between estimates, visual indications and formal tests.
-- [ ] Keep the report within **15 main-text pages** and prepare the **10-minute group presentation**.
-- [ ] Cite external sources used in the report.
-- [ ] Make sure every group member understands the submitted code and analysis.
+- [ ] Review the final report against the assignment handout as a group, confirm author/group details and complete the submission check. A successful compile and numerical validation do not replace this review.
+- [ ] Reconcile the presentation with the refined Rmd/report, confirm speaker roles and rehearse the **10-minute group presentation**. Existing presentation materials are in the separate Desktop workspace and have not been checked against this revision.
+- [ ] Make sure every group member understands the code, bootstrap assumptions, missing-year treatment, bandwidth sensitivity and interpretation limits.
+- [ ] Submit the agreed final report and presentation by their deadlines.
+
+After any further analysis change, re-render the Rmd, inspect its validation records, and refresh the report and presentation inputs before compiling and checking those deliverables. Rmd rendering does not automatically update the report's copied inputs or prose.
 
 **Report deadline:** 2 October 2026, 18:00.
 
 **Presentation deadline:** 6 October 2026, 18:00.
 
 ## Update log
+
+- **29 September 2026, repository cleanup:** Renamed the main Rmd, included its rebuilt HTML and the report with every required dependency, updated build commands, and removed historical snapshots from the active file list. Analysis methods and results are unchanged.
+
+- **29 September 2026:** Updated the README and checklist to reflect completed Parts I–III, the refined Rmd and validated outputs, and the revised separate LaTeX report. Replaced stale time-index, seed, primary-DW and unfinished-analysis descriptions; retained group review and submission tasks as open.
+
+- **28 September 2026:** Refined the Rmd's diagnostics, inference qualifications, computational checks and plot colours. Aligned the separate report with that Rmd, retaining its original references and adding the missing sources; compiled and visually checked the report.
 
 - **26 September 2026:** Adopted the Part I R Markdown document as the primary entry point, corrected its rendering setup and data path, and preserved the previous repository under `before-rmarkdown-part1`. The current interpretation still needs the methodological review listed above.
 

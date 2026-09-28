@@ -24,9 +24,12 @@
 # Temporary review and build files
 tmp/
 
-# Reproducible R Markdown output and intermediate files
+# Local computational artifacts and old output folders
 /work/
 /outputs/
-/main_part1_markdown.html
-/main_part1_markdown_files/
-/main_part1_markdown_cache/
+
+# R Markdown intermediates; main.html is a versioned deliverable
+/main_files/
+/main_cache/
+/main.knit.md
+/main.utf8.md

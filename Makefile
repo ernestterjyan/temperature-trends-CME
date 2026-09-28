@@ -1,12 +1,15 @@
-.PHONY: analysis report historical-report clean-report
+.DEFAULT_GOAL := all
+.PHONY: all analysis html report clean-report
 
-analysis: report
+all: html report
+
+analysis: html
+
+html:
+	Rscript --vanilla -e 'rmarkdown::render("main.Rmd", output_file = "main.html", envir = new.env())'
 
 report:
-	Rscript --vanilla -e 'rmarkdown::render("main_part1_markdown.Rmd", output_dir = "outputs", envir = new.env())'
-
-historical-report:
-	latexmk -pdf -cd -interaction=nonstopmode -halt-on-error docs/progress.tex
+	latexmk -pdf -cd -interaction=nonstopmode -halt-on-error report/report.tex
 
 clean-report:
-	latexmk -c -cd docs/progress.tex
+	latexmk -c -cd report/report.tex

@@ -1,0 +1,2227 @@
+---
+title: "Station08 Annual Mean Temperature: Linear Trends, Structural Change and Bootstrap Inference"
+subtitle: "Station 08 — Computational Methods in Econometrics"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    toc_depth: 3
+    code_folding: show
+    self_contained: true
+params:
+  recompute_simulation: false
+  workers: 4
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Introduction and research question
+
+Instrumental temperature records that begin in the eighteenth century
+are among the longest direct observations of near-surface climate.
+Estimating a trend from such a record requires more than fitting a
+straight line: residual autocorrelation, changing variance and changes
+in the trend itself all affect which statistical conclusions are valid.
+This report analyses the annual mean temperature record of Geneva
+(Station08) and addresses the question: *what does this record reveal
+about long-term warming, about the adequacy of a single linear trend,
+and about a possible change in the trend at an unknown date?*
+
+Section 2 describes the data and their gap structure. Section 3
+estimates a linear trend and examines its residuals, including a Monte
+Carlo Durbin–Watson test and a Breusch–Pagan test. Section 4 fits a
+continuous broken-trend model with an unknown break date, tests for the
+break with bootstrap procedures chosen in light of the Section 3
+diagnostics, and constructs bootstrap confidence intervals for the pre-
+and post-break slopes. Section 5 evaluates the finite-sample size and
+power of these bootstrap procedures by simulation, and Section 6
+concludes. All numbers quoted in the text are computed by the embedded
+code; executable consistency checks are collected in Appendix A.
+
+```{r setup, include=FALSE}
+input_path <- knitr::current_input(dir = TRUE)
+if (is.null(input_path)) {                     # interactive chunk execution
+  input_path <- if (requireNamespace("rstudioapi", quietly = TRUE) &&
+                    rstudioapi::isAvailable() &&
+                    nzchar(rstudioapi::getSourceEditorContext()$path)) {
+    rstudioapi::getSourceEditorContext()$path  # the open .Rmd
+  } else file.path(getwd(), "main.Rmd")
+}
+project_root <- normalizePath(dirname(input_path), mustWork = TRUE)
+if (!exists("params")) params <- list(recompute_simulation = FALSE, workers = 4)
+stopifnot(file.exists(file.path(project_root, "Station08.csv")))
+artifact_root <- file.path(project_root, "work", "main_rmd_run")
+for (folder in c("figures", "tables", "work/simulation", "outputs", "knitr_figures")) {
+  dir.create(file.path(artifact_root, folder), recursive = TRUE, showWarnings = FALSE)
+}
+knitr::opts_knit$set(root.dir = artifact_root)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = TRUE, error = FALSE, cache = FALSE,
+  fig.align = "center", fig.path = paste0(file.path(artifact_root, "knitr_figures"), "/")
+)
+options(knitr.graphics.rel_path = FALSE)
+# Shared plot colours for Parts I, II and III.
+navy <- "#174A6E"
+teal <- "#00857D"
+rust <- "#C46938"
+gray <- "#64737C"
+gray_line <- "#A7B2B9"
+gap_fill <- "#F1F3F3"
+teal_fill <- "#8EC5C1"
+axis_colour <- "#344650"
+label_colour <- "#243945"
+fmt <- function(value, digits = 4) {
+  formatC(value, digits = digits, format = "f")
+}
+write_csv <- function(x, file) {
+  write.csv(x, file, row.names = FALSE, na = "")
+}
+```
+
+# Data and exploratory analysis
+
+## Station, data source and sample
+
+The series is the Geneva station (Switzerland; 46.20°N, 6.15°E;
+elevation 405 m) from the Global Historical Climatology Network Monthly
+Temperature dataset, version 4, of the NOAA National Centers for
+Environmental Information (GHCN-M v4; Menne et al., 2018; DOI
+10.7289/V5XW4GTH). Annual means are formed only for years with at least
+ten valid monthly values; the supplied file contains the calendar year
+and the annual mean temperature in °C.
+
+We use the QCF series, i.e. the quality-controlled and
+homogenisation-adjusted version. This matters for interpretation. The
+pairwise homogenisation applied in GHCN-M v4 is designed to remove
+artificial level shifts caused by, for example, station relocations or
+instrument changes, so a change in trend detected in this series is less
+likely to be a documented measurement artefact. Adjustments for the
+earliest decades, however, rest on few neighbouring stations, and
+residual inhomogeneities cannot be ruled out with the information
+supplied.
+
+The file contains 226 annual observations between 1753 and 2013. Since
+261 calendar years lie in this range, 35 years are missing; they are
+located below. Apart from sorting by year and validating the file, no
+transformation is applied to the temperatures. The only transformation
+of the time variable is the rescaled index defined in Section 2.2.
+
+```{r load-data}
+master_seed <- 20260926L
+set.seed(master_seed)
+
+library(ggplot2)
+
+dat <- read.csv(file.path(project_root, "Station08.csv"))
+stopifnot(identical(names(dat), c("Year", "Temperature")),
+          nrow(dat) == 226L, !anyNA(dat),
+          all(is.finite(dat$Year)), all(is.finite(dat$Temperature)),
+          !anyDuplicated(dat$Year))
+
+# Sort by year, validate supplied data instead of silently dropping observations.
+dat <- dat[order(dat$Year), ]
+stopifnot(all(diff(dat$Year)>0))
+n <- nrow(dat)
+
+cat("Number of observations n =", n, "\n")
+cat("First year:", min(dat$Year), " Last year:", max(dat$Year), "\n")
+```
+
+## Gap structure and time index
+
+```{r gap-detection}
+# ---- Gap diagnostics: locate every "year jump" ----
+full_years     <- seq(min(dat$Year), max(dat$Year))
+missing_years  <- setdiff(full_years, dat$Year)
+# year difference between consecutive observations
+gap_len        <- diff(dat$Year)
+# a difference > 1 indicates a gap
+gap_start_idx  <- which(gap_len > 1)
+
+gap_table <- data.frame(
+  from      = dat$Year[gap_start_idx],
+  to        = dat$Year[gap_start_idx + 1],
+  n_missing = gap_len[gap_start_idx] - 1
+)
+
+print(gap_table)
+cat("\nTotal missing years:", length(missing_years), "\n")
+cat("Number of gaps:", nrow(gap_table), "\n")
+big_gap <- gap_table[which.max(gap_table$n_missing), ]
+cat("Largest gap:", big_gap$n_missing, "years, from", big_gap$from, "to", big_gap$to, "\n")
+```
+
+The record contains `r nrow(gap_table)` gaps with a total of
+`r length(missing_years)` missing years. Four gaps are short (one to
+three years) and lie between 1931 and 1979. The fifth spans
+`r big_gap$from + 1`–`r big_gap$to - 1`, i.e. `r big_gap$n_missing`
+consecutive years, and separates the last four observations (2010–2013)
+from the rest of the record. Observations that are adjacent in the data
+file are therefore not always adjacent in calendar time. We keep every
+supplied observation, use the actual calendar year as time regressor,
+and state for each diagnostic whether lags are counted in observation
+positions or in calendar years. In all time-series figures, lines
+connect only observations within the same run of consecutive years, so
+no line suggests data inside a gap.
+
+**Time index.** The time regressor is
+$$t_i = (\mathrm{Year}_i - 1850)/10 .$$ Dividing by ten expresses every
+slope in °C per decade. Centring at 1850 places the reference year next
+to the break date estimated in Section 4, which lies in the
+mid-nineteenth century. As a result, the intercept of the linear model
+is its fitted temperature in 1850, and the intercept of the broken-trend
+model is also its fitted temperature in 1850, since the estimated break
+occurs after this reference year. The two intercepts are therefore directly
+comparable at the same reference year. Centring is a reparametrisation:
+it changes only the intercept and leaves fitted values, residuals,
+slopes and every test statistic unchanged (Appendix C; verified
+numerically in Appendix A). The reference year was chosen after seeing
+the Section 4 estimate; it serves presentation only and carries no
+inferential weight.
+
+```{r segment-and-t}
+# Increment the segment id by 1 whenever the year jumps by more than 1 year; used to avoid drawing lines across gaps
+dat$segment <- c(1, cumsum(diff(dat$Year) > 1) + 1)
+
+# Centered, decade-scaled time index
+dat$t <- (dat$Year - 1850) / 10
+```
+
+## Exploratory analysis
+
+```{r explore-plot, fig.width=8, fig.height=4.5, fig.cap="Annual mean temperature at Geneva, 1753–2013 (°C). Lines connect consecutive years only; the shaded band marks the 1981–2009 period without observations."}
+ggplot(dat, aes(x = Year, y = Temperature)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = gap_fill) +
+  geom_line(aes(group = segment), linewidth = 0.4, colour = gray_line) +
+  geom_point(size = 0.8, colour = gray) +
+  labs(
+    title = "Station08 annual mean temperature (1753-2013)",
+    subtitle = "Grey shading = largest data gap (1981-2009, no observations)",
+    x = "Year", y = "Annual mean temperature (°C)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(text = element_text(colour = label_colour),
+        axis.text = element_text(colour = axis_colour))
+```
+
+```{r explore-stats}
+cat("Temperature range:", round(range(dat$Temperature), 2), "\n")
+cat("5 coldest years:\n")
+print(head(dat[order(dat$Temperature), c("Year", "Temperature")], 5))
+cat("5 warmest years:\n")
+print(tail(dat[order(dat$Temperature), c("Year", "Temperature")], 5))
+cat("Standard deviation before 1900:", round(sd(dat$Temperature[dat$Year < 1900]), 3),
+    "  Standard deviation from 1900 onward:", round(sd(dat$Temperature[dat$Year >= 1900]), 3), "\n")
+```
+
+The figure above shows the series. Its main empirical features are the
+following.
+
+**Direction of the trend.** The record does not rise uniformly. Mean
+temperature is `r fmt(mean(dat$Temperature[dat$Year < 1800]), 2)` °C
+before 1800,
+`r fmt(mean(dat$Temperature[dat$Year >= 1800 & dat$Year < 1850]), 2)` °C
+in 1800–1849,
+`r fmt(mean(dat$Temperature[dat$Year >= 1850 & dat$Year < 1900]), 2)` °C
+in 1850–1899 and
+`r fmt(mean(dat$Temperature[dat$Year >= 1900 & dat$Year <= 1980]), 2)`
+°C in 1900–1980. The series thus drifts downward from the late
+eighteenth into the mid-nineteenth century and rises mainly during the
+twentieth century. All four observations after the long gap rank among
+the twelve warmest years of the record. A single straight line through
+this record averages an early flat-to-cooling phase with later warming,
+which motivates the broken-trend analysis of Section 4.
+
+**Interannual variability.** The sample standard deviation is
+`r fmt(sd(dat$Temperature), 2)` °C, and year-to-year changes are large
+relative to the long-run movements described above. The standard
+deviation is `r fmt(sd(dat$Temperature[dat$Year < 1900]), 3)` °C before
+1900 and `r fmt(sd(dat$Temperature[dat$Year >= 1900]), 3)` °C from 1900
+onwards. These raw figures also contain trend movements within each
+sub-period, so they indicate only that variability has not visibly
+increased; Section 3 assesses changing variance formally.
+
+**Unusual observations.** The coldest year is
+`r dat$Year[which.min(dat$Temperature)]`
+(`r fmt(min(dat$Temperature), 2)` °C) and the warmest is
+`r dat$Year[which.max(dat$Temperature)]`
+(`r fmt(max(dat$Temperature), 2)` °C). No observation is removed. The
+coldest year lies in the same period as the break date estimated in
+Section 4, which therefore checks how sensitive the estimated break is
+to this single year.
+
+**Missing decades.** The 2010–2013 observations follow 29 years without
+data. They cannot show whether warming during that interval was gradual,
+accelerating or interrupted, and we do not interpret the difference
+between 1980 and 2010 as a discontinuity.
+
+# Linear trend and model diagnostics
+
+We first examine whether a single linear trend is an adequate initial
+description of the series. This section concentrates on estimation,
+interpretation and diagnostics; the statistical significance of the
+trend is not assessed here. The model is
+$$y_i=\beta_0 + \beta_1 t_i + \varepsilon_i, \qquad i=1,\ldots,n,$$
+where $y_i$ is the annual mean temperature of the $i$-th observation,
+$i$ indexes observation positions, and $t_i=(\mathrm{Year}_i-1850)/10$
+is the calendar-time index of Section 2.2. Hence $\beta_0$ is the fitted
+temperature in 1850 and $\beta_1$ is the trend in °C per decade.
+
+## OLS estimation of the linear trend
+
+```{r ols-fit}
+trend_model <- lm(Temperature ~ t, data = dat)
+summary(trend_model)
+
+print(coef(trend_model))
+cat("R-squared:", round(summary(trend_model)$r.squared, 4), "\n")
+
+beta0_hat <- coef(trend_model)[1]
+beta1_hat <- coef(trend_model)[2]
+
+cat("Estimated intercept (fitted temperature in 1850):", round(beta0_hat, 3), "°C\n")
+cat("Estimated slope:", round(beta1_hat, 4), "°C per decade\n")
+cat("Converted to per century:", round(beta1_hat * 10, 3), "°C per century\n")
+
+```
+
+```{r ols-plot, fig.width=8, fig.height=4.5, fig.cap="Annual mean temperature (grey) with the OLS linear trend (navy), °C. The shaded band marks the 1981–2009 gap."}
+dat$fitted_linear <- fitted(trend_model)
+
+ggplot(dat, aes(x = Year, y = Temperature)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = gap_fill) +
+  geom_line(aes(group = segment), linewidth = 0.4, colour = gray_line) +
+  geom_point(size = 0.8, colour = gray) +
+  geom_line(aes(y = fitted_linear), colour = navy, linewidth = 1) +
+  labs(title = "Geneva temperature series with OLS linear trend",
+       x = "Year", y = "Annual mean temperature (°C)") +
+  theme_minimal(base_size = 12) +
+  theme(text = element_text(colour = label_colour),
+        axis.text = element_text(colour = axis_colour))
+```
+
+**Interpretation.** The estimated intercept, $\hat\beta_0=$
+`r fmt(beta0_hat, 3)` °C, is the temperature implied by the fitted line
+in 1850. The estimated slope, $\hat\beta_1=$ `r fmt(beta1_hat, 4)` °C
+per decade (`r fmt(10 * beta1_hat, 3)` °C per century), is the average
+linear change over the observed record. The trend explains only a small
+share of the total variation ($R^2=$
+`r fmt(summary(trend_model)$r.squared, 3)`), consistent with the
+exploratory finding that interannual variability dominates the long-run
+change.
+
+**Effect of the gaps.** Because the regressor is calendar time, the
+slope keeps its meaning under unequal spacing, and OLS is well defined
+for this fixed design. The gaps nevertheless determine which periods are
+represented and therefore affect the estimate and its precision. The
+`r sum(dat$Year <= 1980)` observations up to 1980 inform the slope as
+well; it is not determined solely by a contrast between the four
+post-gap values and the rest. A single slope says nothing about the path
+of temperature inside the missing decades, and neither the exogeneity of
+the errors nor the mechanism behind the missing years can be verified
+from the supplied file. In line with the research design, no
+significance statement about $\beta_1$ is made at this stage.
+
+## Residual diagnostics
+
+```{r residuals}
+dat$residual    <- residuals(trend_model)
+dat$residual_sq <- dat$residual^2
+```
+
+### Residuals over time
+
+```{r resid-time-plot, fig.width=8, fig.height=4.5, fig.cap="Residuals of the linear trend model against calendar year (°C). Lines connect consecutive years only; the shaded band marks the 1981–2009 gap."}
+ggplot(dat, aes(x = Year, y = residual)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = gap_fill) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = navy) +
+  geom_line(aes(group = segment), linewidth = 0.4, colour = gray_line) +
+  geom_point(size = 0.8, colour = gray) +
+  labs(title = "Residuals from the linear trend model", x = "Year", y = "Residual (°C)") +
+  theme_minimal(base_size = 12) +
+  theme(text = element_text(colour = label_colour),
+        axis.text = element_text(colour = axis_colour))
+```
+
+The residuals fluctuate around zero, with runs of similarly signed
+values and low-frequency departures from the linear fit. These patterns
+suggest residual dependence and possible inadequacy of the
+constant-trend mean. We inspect both observation-lag and calendar-lag
+ACFs, then calibrate the Durbin–Watson statistic by Monte Carlo
+simulation.
+
+### Residual autocorrelation by observation and calendar lag
+
+**Why the lag definition matters:** Applied to the observed residual
+vector, `acf()` measures lag by row position. It is a valid description
+of dependence between observed rows, but a one-observation lag is not
+always a one-calendar-year lag. For example, observations
+`r match(1980, dat$Year)` and `r match(2010, dat$Year)` correspond to
+1980 and 2010, thirty calendar years apart.
+
+**Calendar-lag comparison:** Place residuals on the full calendar grid,
+insert `NA` for unobserved years, and use `na.action = na.pass`. This
+uses available pairs for each calendar lag without imputing
+temperatures. With missing values, the resulting estimates need not
+define a valid autocorrelation sequence; the usual plot bounds are
+descriptive rather than calibrated inference. Both ACFs are retained,
+and their lag meanings are stated explicitly.
+
+```{r acf-compare, fig.width=9, fig.height=4, fig.cap="Sample autocorrelation of the linear-trend residuals by observation lag (left) and by calendar-year lag with missing years set to NA (right)."}
+# Naive approach (uncorrected, shown only for comparison to illustrate the problem)
+acf_naive <- acf(dat$residual, lag.max = 20, plot = FALSE)
+
+# Corrected approach: place back on the full calendar grid + na.action = na.pass
+res_full <- rep(NA_real_, length(full_years))
+res_full[match(dat$Year, full_years)] <- dat$residual
+res_ts   <- ts(res_full, start = min(full_years), frequency = 1)
+acf_gap  <- acf(res_ts, na.action = na.pass, lag.max = 20, plot = FALSE)
+
+par(mfrow = c(1, 2), col.axis = axis_colour, col.lab = label_colour,
+    col.main = label_colour)
+plot(acf_naive, main = "ACF by observation lag", col = navy, ci.col = teal)
+plot(acf_gap,   main = "ACF by calendar-year lag", col = navy, ci.col = teal)
+
+cat("Observation-lag 1 autocorrelation:", round(acf_naive$acf[2], 3), "\n")
+cat("Calendar-lag 1 autocorrelation:", round(acf_gap$acf[2], 3), "\n")
+par(mfrow = c(1, 1))
+
+```
+
+The first observation-lag and calendar-lag autocorrelations are
+`r fmt(as.numeric(acf_naive$acf[2]), 3)` and
+`r fmt(as.numeric(acf_gap$acf[2]), 3)`. They are close here because most
+observed pairs are consecutive calendar years. Both indicate positive
+short-range residual dependence. Their similarity in this dataset does
+not make the two lag definitions interchangeable in general.
+
+### Residual variance over time
+
+```{r variance-plot, fig.width=8, fig.height=4.5, fig.cap="Squared residuals of the linear trend model (°C²) against calendar year, with a descriptive loess smooth. The shaded band marks the 1981–2009 gap."}
+ggplot(dat, aes(x = Year, y = residual_sq)) +
+  annotate("rect", xmin = big_gap$from, xmax = big_gap$to,
+           ymin = -Inf, ymax = Inf, fill = gap_fill) +
+  geom_point(size = 0.8, colour = gray) +
+  geom_smooth(method = "loess", se = FALSE, colour = teal) +
+  labs(
+    title = "Squared residuals over time",
+    subtitle = "Caution: the smooth line is not supported by any observations inside the shaded region",
+    x = "Year", y = expression(hat(epsilon)[t]^2)
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(text = element_text(colour = label_colour),
+        axis.text = element_text(colour = axis_colour))
+```
+
+The scatter uses actual calendar years. The loess curve is a descriptive
+smooth, and its portion inside the long gap is not supported by
+observations from those years. The final four observations can influence
+its endpoint behavior; the plot cannot establish how variance evolved
+during the gap. No formal conclusion about constant variance follows
+from this smooth alone.
+
+### Normal QQ plot
+
+```{r qq-plot, fig.width=5, fig.height=5, fig.cap="Normal QQ plot of the linear-trend residuals (°C)."}
+par(col.axis = axis_colour, col.lab = label_colour, col.main = label_colour)
+qqnorm(dat$residual, main = "Normal QQ plot of residuals", col = gray)
+qqline(dat$residual, col = teal)
+```
+
+The QQ plot is broadly linear in its center, with some tail departures.
+This is compatible with a Gaussian approximation but does not verify
+normality. Time spacing does not enter the QQ construction, although the
+plotted marginal distribution still reflects only the observed years.
+Gaussian errors remain an explicit reference assumption for the DW Monte
+Carlo calibration.
+
+## Monte Carlo Durbin–Watson test for first-order autocorrelation
+
+**Primary statistic.** The research design specifies the Durbin–Watson
+statistic.
+
+$$d=\frac{\sum_{i=2}^n(\widehat e_i-\widehat e_{i-1})^2}{\sum_{i=1}^n\widehat e_i^2}.$$
+
+Adjacency in its numerator is by observation position. We implement this
+definition as the primary test and interpret it accordingly. Calendar
+gaps affect its meaning, but restricting the numerator to
+calendar-adjacent pairs would define a different statistic rather than
+implement the specified one.
+
+**Calendar-adjacency sensitivity.** As a sensitivity check we also
+compute
+
+$$d_{\mathrm{calendar}}=\frac{\sum_{i:\ s_{i+1}-s_i=1}(\widehat e_{i+1}-\widehat e_i)^2}{\sum_i\widehat e_i^2},$$
+
+where $s_i$ is the calendar year of observation $i$. It uses only pairs
+of genuinely consecutive years. Both statistics can be written as
+$e'Ae/e'e$ with different difference matrices $A$, and each is
+calibrated with its own formula under the same observed regression
+design.
+
+```{r dw-define}
+# Naive DW (uncorrected, shown only for comparison)
+dw_naive_stat <- function(e) sum(diff(e)^2) / sum(e^2)
+d_obs_naive <- dw_naive_stat(dat$residual)
+
+# ---- Gap-sensitive DW: only compute differences over pairs that are truly calendar-adjacent (year difference = 1) ----
+valid_pairs <- which(diff(dat$Year) == 1)      # indices of valid "adjacent pairs"
+m_pairs <- length(valid_pairs)
+
+Dmat <- matrix(0, nrow = m_pairs, ncol = n)
+for (k in seq_len(m_pairs)) {
+  i <- valid_pairs[k]
+  Dmat[k, i]     <- -1
+  Dmat[k, i + 1] <-  1
+}
+A_gap <- crossprod(Dmat)   # A = D'D
+
+dw_gap_stat <- function(e) as.numeric((t(e) %*% A_gap %*% e) / (t(e) %*% e))
+d_obs_gap <- dw_gap_stat(dat$residual)
+d_obs <- d_obs_naive  # primary statistic: assignment definition
+
+cat("Assigned observation-adjacency DW:", round(d_obs_naive, 4), "\n")
+cat("Gap-sensitive DW statistic:", round(d_obs_gap, 4), "\n")
+cat("Valid calendar-adjacent year pairs used:", m_pairs, "/", n - 1, "sequence-adjacent pairs\n")
+
+```
+
+The primary statistic is `r fmt(d_obs)`, and the calendar-adjacency
+variant is `r fmt(d_obs_gap)`. There are `r m_pairs` calendar-adjacent
+pairs among the `r n-1` observation-adjacent pairs. Both are reported;
+the primary statistic governs the conclusion of this section.
+
+### Design of the Monte Carlo test
+
+Under the null hypothesis $\varepsilon\sim N(0,\sigma^2 I_n)$, the OLS
+residuals are $e=M_X\varepsilon$ with $M_X=I-X(X'X)^{-1}X'$. The
+projection removes the regression coefficients, and because $d=e'Ae/e'e$
+is a ratio of quadratic forms in $e$, the error variance cancels. The
+null distribution of $d$ therefore depends only on the known design
+matrix $X$ and the difference matrix $A$: $d$ is *pivotal* under this
+null, and its exact finite-sample distribution can be simulated to any
+desired precision.
+
+The test proceeds as follows. For $b=1,\ldots,B$ with $B=9{,}999$, draw
+$\varepsilon^{*}_b\sim N(0,I_n)$, form $e^*_b=M_X\varepsilon^*_b$, and
+evaluate both DW definitions on $e^*_b$. Because the null distribution
+of $d$ need not be symmetric around two, the two tails are calibrated
+separately: the lower and upper critical values $c_L$ and $c_U$ are the
+empirical 2.5% and 97.5% quantiles of the simulated statistics (R's
+type-6 quantile), not one quantile reflected around two. The **rejection
+region** of the two-sided 5% test is therefore
+$$\mathcal R=\{d<c_L\}\cup\{d>c_U\},$$ two tails that need not be
+equally far from two. Values in the lower tail indicate positive
+first-order autocorrelation; values in the upper tail indicate negative
+autocorrelation. The two-sided Monte Carlo p-value is
+$$p=\min\Bigl\{1,\;2\min\Bigl(\tfrac{1+\#\{d^*_b\le d\}}{B+1},\;\tfrac{1+\#\{d^*_b\ge d\}}{B+1}\Bigr)\Bigr\}.$$
+With $B=9{,}999$, the type-6 cutoffs are the 250th and 9,750th ordered
+simulated statistics. Under the continuous null, strict rejection
+outside these cutoffs agrees with $p\le0.05$. This rank rule has exact
+5% size under the iid Gaussian null, although the simulated cutoffs and
+p-value vary across simulation runs. It is not a test of the broader
+null of every process without first-order correlation, and non-Gaussian errors would
+change the reference distribution.
+
+```{r dw-mc-test}
+X <- model.matrix(trend_model)
+H <- X %*% solve(t(X) %*% X) %*% t(X)
+M <- diag(n) - H
+
+set.seed(master_seed)
+B <- 9999L
+d_sim <- d_sim_gap <- numeric(B)
+
+for (b in seq_len(B)) {
+  eps_star <- rnorm(n)
+  e_star <- as.numeric(M %*% eps_star)
+  d_sim[b] <- dw_naive_stat(e_star)   # assigned observation-adjacency statistic
+  d_sim_gap[b] <- dw_gap_stat(e_star) # retained calendar-adjacent sensitivity
+}
+
+alpha <- 0.05
+crit_lower <- unname(quantile(d_sim, alpha / 2, type = 6))
+crit_upper <- unname(quantile(d_sim, 1 - alpha / 2, type = 6))
+p_lower_adj <- (sum(d_sim <= d_obs) + 1) / (B + 1)
+p_upper_adj <- (sum(d_sim >= d_obs) + 1) / (B + 1)
+p_val_dw <- min(1, 2 * min(p_lower_adj, p_upper_adj))
+
+crit_gap <- unname(quantile(d_sim_gap, c(alpha / 2, 1 - alpha / 2), type = 6))
+p_val_dw_gap <- min(1, 2 * min(
+  (sum(d_sim_gap <= d_obs_gap) + 1) / (B + 1),
+  (sum(d_sim_gap >= d_obs_gap) + 1) / (B + 1)
+))
+dw_results <- data.frame(
+  Definition = c("Assigned: observation adjacency", "Sensitivity: calendar adjacency"),
+  Statistic = c(d_obs, d_obs_gap),
+  Lower_2_5_percent = c(crit_lower, crit_gap[1]),
+  Upper_97_5_percent = c(crit_upper, crit_gap[2]),
+  Equal_tail_p_value = c(p_val_dw, p_val_dw_gap)
+)
+knitr::kable(dw_results, digits = 4)
+
+# Optional packaged cross-check uses its own statistic/reference and is not the primary calibration.
+if (requireNamespace("lmtest", quietly = TRUE)) {
+  print(lmtest::dwtest(trend_model, alternative = "two.sided"))
+}
+
+```
+
+**Result.** The observed statistic is $d=$ `r fmt(d_obs)`, with Monte
+Carlo critical values $c_L=$ `r fmt(crit_lower)` and $c_U=$
+`r fmt(crit_upper)` and two-sided p-value `r fmt(p_val_dw)`.
+`r if (d_obs < crit_lower) "The statistic lies in the lower tail of the rejection region, so the null of no first-order autocorrelation is rejected at the 5% level in the direction of positive autocorrelation." else if (d_obs > crit_upper) "The statistic lies in the upper tail of the rejection region, so the null is rejected at the 5% level in the direction of negative autocorrelation." else "The statistic lies between the two critical values, so the null is not rejected at the 5% level."`
+The calendar-adjacency variant gives p = `r fmt(p_val_dw_gap)`
+`r if (p_val_dw_gap <= 0.05 && d_obs_gap < crit_gap[1]) "and also indicates positive dependence" else if (p_val_dw_gap <= 0.05) "and also rejects" else "and does not reject"`.
+These results agree with the residual plot and both ACFs. A rejection
+means that the independent Gaussian errors of the linear model are not
+supported; it does not identify the cause, and a misspecified mean, such
+as an unmodelled change in slope, can also produce autocorrelated
+residuals.
+
+## Breusch–Pagan test for heteroskedasticity
+
+The auxiliary regression
+
+$$\widehat e_i^2=\gamma_0+\gamma_1t_i+v_i$$
+
+tests for a **linear variance trend**, using the requested statistic
+$BP=nR^2$ and nominal $\chi^2_1$ reference. A zero time coefficient is a
+narrow diagnostic null; non-rejection does not establish
+homoskedasticity against every possible variance pattern.
+
+**On gaps and calibration:** The regression uses actual transformed
+calendar year and does not require equally spaced rows for its algebra.
+Missing periods still limit interpretation, and the detected residual
+dependence weakens the usual asymptotic chi-square reference. This
+limitation is separate from the choice of observation versus calendar
+adjacency in DW and ACF.
+
+```{r bp-test}
+aux_model <- lm(residual_sq ~ t, data = dat)
+R2_aux   <- summary(aux_model)$r.squared
+BP_stat  <- n * R2_aux
+p_val_bp <- pchisq(BP_stat, df = 1, lower.tail = FALSE)
+
+cat("Breusch-Pagan statistic BP:", round(BP_stat, 4), "\n")
+cat("Degrees of freedom:", 1, "\n")
+cat("BP p-value:", round(p_val_bp, 4), "\n")
+
+# Previous cross-check: bptest(trend_model, varformula = ~ t, data = dat)
+# Optional cross-check; no dependency on lmtest for the main result.
+if (requireNamespace("lmtest", quietly = TRUE)) {
+  print(lmtest::bptest(trend_model, varformula = ~ t, data = dat))
+}
+
+```
+
+**Result.** $BP=$ `r fmt(BP_stat)` with nominal $\chi^2_1$ p-value
+`r fmt(p_val_bp)`.
+`r if (p_val_bp > 0.05) "Homoskedasticity is not rejected at the 5% level: there is no evidence of a linear trend in the residual variance." else "Homoskedasticity is rejected at the 5% level in favour of a linear trend in the residual variance."`
+This is consistent with the variance plot. Non-rejection does not
+establish constant variance, because the test is directed at one
+specific alternative and its asymptotic reference distribution is
+affected by the residual dependence found above.
+
+## Comparing the inferential principles
+
+A Monte Carlo test requires a statistic whose null distribution can be
+simulated without knowing any unknown parameter, i.e. a statistic that
+is pivotal under the null hypothesis being tested.
+
+**Durbin–Watson.** The null hypothesis is fully specified up to
+$(\beta,\sigma^2)$: independent $N(0,\sigma^2)$ errors. As shown above,
+$\beta$ disappears through the projection $M_X$ and $\sigma^2$ cancels
+in the ratio $e'Ae/e'e$. The null distribution of $d$ is therefore the
+same for every admissible parameter value and depends only on the known
+$X$. Simulating standard-normal errors reproduces it, and the Monte
+Carlo rank test has exact 5% size for the replication count and rejection
+rule used here (Dufour and Khalaf, 2001). This exactness is conditional
+on normality: if the errors were independent but non-Gaussian, the simulated reference distribution would
+only be an approximation.
+
+**Breusch–Pagan.** The null of interest is homoskedasticity,
+$\operatorname{Var}(\varepsilon_i)=\sigma^2$ for all $i$, and it does
+not specify the error distribution. The statistic $BP=nR^2$ is
+scale-invariant, so $\sigma^2$ still cancels. Its finite-sample
+distribution, however, depends on the shape of the error distribution,
+in particular on its kurtosis, because the auxiliary regression is
+fitted to squared residuals whose variability is governed by the fourth
+moment. The kurtosis is a nuisance parameter left unrestricted by the
+homoskedasticity null, so $BP$ is not pivotal under that null. One could
+simulate $BP$ under iid Gaussian errors, giving a finite-sample reference
+distribution for that specific null. Applying those critical values to
+homoskedastic errors with other distributions or serial dependence can
+distort size. The $nR^2$ form used here is Koenker's
+(1981) studentised version of the Breusch and Pagan (1979) test, whose
+*asymptotic* $\chi^2_1$ distribution holds without normality; this is
+why the test relies on the asymptotic reference rather than on a
+simulated finite-sample distribution.
+
+We therefore retain the asymptotic calibration and qualify its
+conclusion in light of the residual dependence, rather than treating
+non-rejection as proof of constant variance.
+
+## Overall assessment of the initial model
+
+Bringing the graphical and formal diagnostics together:
+
+1.  **Positive descriptive slope.** The full-sample linear estimate is
+    `r fmt(beta1_hat)` °C per decade, with $R^2=$
+    `r fmt(summary(trend_model)$r.squared, 3)`. This is a modest average
+    fitted change, not a statement about statistical significance.
+2.  **Gaussian reference remains an assumption.** The QQ plot is broadly
+    linear in its centre with tail departures; it does not verify
+    normality.
+3.  **No detected linear variance trend.** The nominal BP p-value is
+    `r fmt(p_val_bp)`. Non-rejection does not establish
+    homoskedasticity, and dependence qualifies the reference
+    distribution.
+4.  **Residual dependence matters.** Both DW variants and both ACFs
+    indicate positive residual dependence. Conventional OLS standard
+    errors that assume independent errors are therefore not a reliable
+    basis for inference. A richer mean specification may reduce, but
+    need not eliminate, this pattern.
+5.  **Missing periods constrain interpretation.** Actual calendar
+    spacing is retained, but there is no direct evidence about
+    temperatures during 1981–2009, and the missingness mechanism and
+    detailed station history are unknown.
+
+**Conclusion.** The linear model is a useful starting description but
+not an adequate final one. Its residual patterns motivate a model in
+which the slope may change, and the detected dependence requires
+inference that does not assume independent errors. Sections 4 and 5
+carry out that inference and evaluate its finite-sample behaviour.
+
+# Structural change and bootstrap inference
+
+This section asks whether the temperature trend changed at an unknown
+date. We fit a continuous broken-trend model, estimate the break date by
+least squares over a trimmed set of candidate dates, test the no-break
+null with bootstrap procedures selected on the basis of the Section 3
+diagnostics, and construct bootstrap confidence intervals for the pre-
+and post-break slopes.
+
+```{r part2-setup}
+year <- dat$Year
+y <- dat$Temperature
+x <- dat$t
+m0 <- trend_model
+e0 <- dat$residual
+seed <- master_seed
+B_test <- 9999L
+B_ci <- 4999L
+B_dw <- B
+simulation_M <- 1000L
+simulation_B <- 499L
+dw <- d_obs
+dwcrit <- c(crit_lower, crit_upper)
+dwp<-p_val_dw
+bp<- BP_stat
+bpp <- p_val_bp
+ncores<- parallel::detectCores()
+if (is.na(ncores)) ncores <- 1L
+stopifnot(is.logical(params$recompute_simulation),
+          length(params$recompute_simulation) == 1L,
+          !is.na(params$recompute_simulation),
+          is.numeric(params$workers), length(params$workers) == 1L,
+          is.finite(params$workers), params$workers >= 1)
+workers <- min(as.integer(params$workers), ncores)
+```
+
+```{r part2-plot-helpers}
+
+plot_pair <-function(name, draw,width = 8, height = 4.8) {
+  pdf(file.path("figures", paste0(name, ".pdf")), width = width, height=height, family="Helvetica", useDingbats=FALSE)
+    draw(); dev.off()
+  png(file.path("figures",paste0(name,".png")),width=width*180,height=height*180,res=180,type="cairo")
+  draw(); dev.off()
+  invisible(NULL)
+}
+setup <- function() {
+  par(mar = c(4.2, 4.5, 1.5, 1), mgp = c(2.7, .7, 0), las = 1,
+      col.axis = axis_colour, col.lab = label_colour,
+      col.main = label_colour, cex = .95)
+}
+series_lines <- function(z, col, lwd = 1) {
+  idx <- split(seq_along(year), cumsum(c(TRUE, diff(year) > 1)))
+  for (ii in idx) lines(year[ii], z[ii], col = col, lwd = lwd)
+}
+```
+
+## Model, estimation and admissible break dates
+
+**Model.** For a candidate break at observation $k$ we consider
+$$y_i = \alpha + \beta x_i + \delta(x_i - x_k)_+ + \varepsilon_i, \qquad (z)_+=\max(0,z),$$
+where $x_i$ is the decade-scaled time index. The hinge $(x_i-x_k)_+$ is
+the regressor $D_{t,T_c}$ of the broken-trend model, measured in
+decades. The model differs from the linear trend in three respects.
+First, the slope is $\beta$ before the break and $\beta+\delta$ after
+it, and the linear model is the special case $\delta=0$. Second, the
+hinge equals zero at the break, so the fitted line is continuous: the
+model allows a change in slope but no jump in level. Third, the break
+date is an additional unknown parameter; the model is linear in
+$(\alpha,\beta,\delta)$ but not in the break date.
+
+**Estimation for a fixed date.** For a given candidate $k$, the hinge is
+a known regressor. The model is then an ordinary linear regression of
+$y$ on $[1,\ x,\ (x-x_k)_+]$, and $(\alpha,\beta,\delta)$ are estimated
+by OLS, yielding $RSS(k)$. The break date is estimated by repeating this
+for every admissible $k$ and choosing the candidate with the smallest
+$RSS(k)$. This grid search is the least-squares estimator of the break
+date.
+
+**Admissible dates.** With trimming fraction $\lambda=0.15$, candidates
+run from observation $\lceil 0.15n\rceil$ to $\lfloor 0.85n\rfloor$.
+Trimming guarantees that each regime contains at least 15% of the
+observations, so that both slopes are estimated from enough data and the
+search is not dominated by fits to a few end points (Andrews, 1993). We
+trim by observation position rather than by calendar span, because the
+number of observations in each regime determines estimation precision.
+Owing to the 1981–2009 gap, trimming 15% of the calendar span would
+admit break dates with as few as eight observations after them.
+
+**Computation.** For fast repeated searches, each candidate hinge is
+residualised against $[1,x]$ and normalised to unit length. By the
+Frisch–Waugh–Lovell theorem, the squared inner product of this vector
+with the null residuals equals the reduction in RSS from adding the
+hinge, so the whole search reduces to one matrix product. Appendix A
+checks this against explicit OLS fits.
+
+```{r prepare-break-design}
+ prepare_design <- function(year,trim=0.15){
+   stopifnot(is.numeric(year), all(is.finite(year)), length(year) >= 10L,
+             all(diff(year)>0),
+             length(trim)==1L, trim>0, trim<0.5)
+   n<-length(year)
+   x<-(year - mean(year))/10
+   X0 <- cbind(intercept = 1, pre = x)
+   qr0<- qr(X0)
+   Q0 <- qr.Q(qr0)
+   index<-seq.int(ceiling(trim*n), floor((1-trim)*n))
+   H <- outer(x,x[index], function(a,b) pmax(0,a-b))
+   Hres <- H - Q0 %*% crossprod(Q0,H)
+   hnorm <- sqrt(colSums(Hres^2))
+   stopifnot(all(hnorm>0))
+   Qhinge<-sweep(Hres,2L, hnorm, "/")
+   structure(list(year = year, n=n, x=x, X0=X0, qr0 = qr0, Q0=Q0, index=index, candidates=index, H=H, Qhinge=Qhinge, hinge_norm = hnorm, trim=trim), class = "break_design")
+ }
+```
+
+The search function accepts a single series or a matrix of bootstrap
+series, one per column. The test statistic is
+
+$$F_T=RSS_0-\min_{k\in\mathcal K}RSS(k).$$
+
+Despite its name, $F_T$ is the raw reduction in the residual sum of
+squares (in °C²), not a variance-normalised F ratio. A normalised
+version is also computed but not used for the reported tests. Ties are
+resolved in favour of the earliest candidate.
+
+```{r break-statistic-and-fit}
+break_statistics <- function(y, design){
+  if(is.null(dim(y))) y<-matrix(y, ncol = 1L)
+  stopifnot(nrow(y) == design$n, all(is.finite(y)))
+  resid0<-y-design$Q0 %*% crossprod(design$Q0,y)
+  rss0 <- colSums(resid0^2)
+  scores2 <- crossprod(design$Qhinge, resid0)^2
+  best<- max.col(t(scores2), ties.method = "first")
+  gain <- scores2[cbind(best, seq_len(ncol(y)))]
+  rss1 <- pmax(rss0 - gain, .Machine$double.eps * pmax(rss0,1))
+  list(F=gain, studentized_F = gain / (rss1/(design$n - 3L)),
+  grid_index= best, RSS0 = rss0, RSS1= rss1, gain = gain)
+}
+
+fit_break <- function(y,design){
+  stopifnot(is.numeric(y), length(y) == design$n, all(is.finite(y)))
+  stats<- break_statistics(y,design)
+  j<-stats$grid_index[1L]
+  X1 <- cbind(design$X0, delta = design$H[, j])
+  fit<- lm.fit(X1,y)
+  co <- fit$coefficients
+  co <- c(intercept = unname(co[1L]), pre=unname(co[2L]), delta = unname(co[3L]), 
+          post = unname(co[2L] + co[3L]))
+  null<- lm.fit(design$X0, y)
+  list(F = unname(stats$F[1L]), index=design$index[j], year=design$year[design$index[j]], coef = co,
+         pre = co[["pre"]], delta = co[["delta"]], post = co[["post"]],
+       fitted = fit$fitted.values, residuals = fit$residuals,
+       null_fitted = null$fitted.values, null_residuals = null$residuals,
+       null_coef = null$coefficients, RSS0 = unname(stats$RSS0[1L]),
+       RSS1 = unname(stats$RSS1[1L]))
+
+}
+```
+
+```{r search-observed-break}
+design <- prepare_design(year)
+candidates<-design$index
+# This explicit lm loop also provides an independent validation of the fast search.
+rss<-sapply(candidates,function(k) sum(resid(lm(y~x+I(pmax(0,x-x[k]))))^2))
+k<-candidates[which.min(rss)]; h<-pmax(0,x-x[k]); X1<-cbind(1,x,h)
+m1<-lm(y~x+h); e1<-resid(m1); theta<-c(pre=coef(m1)[2],post=sum(coef(m1)[2:3]))
+Fobs<-sum(e0^2)-min(rss)
+fast<-fit_break(y,design)
+stopifnot(abs(fast$F-Fobs)<1e-8)
+knitr::kable(data.frame(
+  First_index = min(candidates), Last_index = max(candidates),
+  First_year = year[min(candidates)], Last_year = year[max(candidates)],
+  Selected_index = k, Selected_year = year[k],
+  Linear_RSS = sum(e0^2), Broken_RSS = min(rss), Raw_RSS_reduction = Fobs
+), digits = 4)
+knitr::kable(data.frame(
+  Parameter = c("Pre-break slope", "Slope change", "Post-break slope"),
+  Estimate = c(unname(coef(m1)[2]), unname(coef(m1)[3]), unname(sum(coef(m1)[2:3])))
+), digits = 4)
+```
+
+The search covers positions `r min(candidates)`–`r max(candidates)`,
+i.e. the years `r year[min(candidates)]`–`r year[max(candidates)]`. The
+minimum RSS is attained at $\widehat T_1=$ `r year[k]`, and the observed
+break statistic is $F_T=$ `r fmt(Fobs)` °C², a
+`r fmt(100 * Fobs / sum(e0^2), 1)`% reduction in RSS relative to the
+linear model.
+`r if (year[k] == dat$Year[which.min(dat$Temperature)]) paste0("The selected year coincides with the coldest year in the record (", year[k], ", ", fmt(min(y), 2), " °C). A continuous hinge fits a trough-shaped mean, so the least-squares kink tends to be drawn towards a pronounced local minimum, and a single extreme year can pull the estimated date towards itself. The sensitivity analysis at the end of this section therefore re-estimates the break without this year.") else ""`
+
+Substantively, a turning point in the mid-nineteenth century is
+consistent with the conventional dating of the end of the Little Ice Age
+in the European Alps, where many glaciers reached their last maximum
+extent around 1850 (Matthews and Briffa, 2005). This agreement is
+suggestive only: a single station cannot establish a regional climate
+transition.
+
+The fitted broken trend is
+
+$$\widehat y_i = `r fmt(coef(m1)[1])` + (`r fmt(coef(m1)[2])`)\,t_i
++ (`r fmt(coef(m1)[3])`)\,(t_i-t_{\widehat k})_+,$$
+
+where $t_i=(\mathrm{Year}_i-1850)/10$ and
+$t_{\widehat k}=(`r year[k]`-1850)/10$.
+`r if (year[k] >= 1850) "Because the estimated break does not precede 1850, the hinge is zero in 1850 and the intercept is the fitted broken-trend temperature in 1850, which gives it the same interpretation as the linear-model intercept." else "Because the estimated break precedes 1850, the hinge is already positive in 1850; the intercept is the extrapolated pre-break line in 1850, not the fitted temperature."`
+The pre-break slope is `r fmt(coef(m1)[2])`, the change in slope is
+`r fmt(coef(m1)[3])`, and the post-break slope is
+`r fmt(sum(coef(m1)[2:3]))` °C per decade.
+
+Selecting the best date improves the fit by construction. Under
+$H_0:\delta=0$ the break date is not identified, and a conventional
+fixed-date test would ignore the search. At this stage the date is
+therefore only the best-fitting location, not evidence that a break is
+present; that question requires calibrating the entire selection
+procedure under the no-break null.
+
+```{r break_profile-plot, fig.cap="RSS at every admissible break date; the minimum selects the observed break.", out.width="100%"}
+plot_pair("break_profile", function() {
+    setup()
+    plot(year[candidates], rss, type = "l", lwd = 2, col = navy, xlab = "Candidate break year", 
+        ylab = "Residual sum of squares (degrees C squared)")
+    abline(v = year[k], col = teal, lty = 2)
+    points(year[k], min(rss), pch = 16, col = teal)
+    text(year[k] + 5, min(rss) + 1.2, paste("Minimum:", year[k]), pos = 4, col = teal)
+}, 8, 4)
+
+knitr::include_graphics(file.path(artifact_root, "figures/break_profile.png"))
+
+```
+
+```{r temperature_fits-plot, fig.cap="Observed temperatures, linear fit and continuous broken trend. Fitted curves across gaps are model-implied.", out.width="100%"}
+plot_pair("temperature_fits", function() {
+    setup()
+    plot(year, y, type = "n", xlab = "Calendar year", ylab = "Annual mean temperature (degrees C)", 
+        ylim = c(7.3, 12))
+    rect(1980.5, 7.3, 2009.5, 12, col = gap_fill, border = NA)
+    series_lines(y, gray_line)
+    points(year, y, pch = 16, cex = 0.42, col = gray)
+    lines(year, fitted(m0), col = navy, lwd = 2, lty = 2)
+    lines(year, fitted(m1), col = teal, lwd = 2.3)
+    abline(v = year[k], col = rust, lty = 3)
+    text(1995, 7.6, "No data", cex = 0.75, col = gray)
+    legend("topleft", c("Observed", "Linear trend", "Broken trend"), col = c(gray, navy, 
+        teal), lty = c(1, 2, 1), lwd = c(1, 2, 2), bty = "n", cex = 0.85)
+})
+
+knitr::include_graphics(file.path(artifact_root, "figures/temperature_fits.png"))
+
+```
+
+## Choice of bootstrap procedures
+
+**Why bootstrap inference.** Under $H_0:\delta=0$ the break date is not
+identified, so $F_T$, which maximises the fit improvement over all
+candidate dates, does not follow a standard $F$ or $\chi^2$
+distribution. No closed-form finite-sample distribution is available,
+and asymptotic critical values would have to be adapted to the trending
+design, the unequal spacing and the dependent errors. The bootstrap
+approximates the null distribution of the entire procedure, including
+the date search, by resampling.
+
+**Which bootstrap.** Section 3 found evidence of positive serial
+dependence (Monte Carlo DW p = `r fmt(dwp)`), while BP did not reject
+homoskedasticity against a linear variance trend (conventional p =
+`r fmt(bpp)`). This non-rejection does not establish constant variance,
+and the usual BP p-value does not adjust for serial dependence. The
+primary procedure must therefore preserve serial dependence. We adopt
+the dependent wild bootstrap (DWB; Shao, 2010). It preserves short-range dependence through
+correlated multipliers and keeps each observation's own residual
+magnitude. Unlike a block bootstrap, it handles unequally spaced
+observations directly: the multiplier correlation decays with calendar
+distance, so no block has to straddle the 1981–2009 gap.
+
+Two secondary procedures provide a sensitivity analysis and together
+form a controlled comparison. The IID residual bootstrap preserves
+neither dependence nor observation-specific variance. The independent
+wild bootstrap (Wu, 1986; Liu, 1988) preserves observation-specific
+variance but not dependence. It is included as a variance-robust
+sensitivity check: BP non-rejection against a linear variance trend
+does not rule out other variance patterns. Comparing the IID residual
+and wild bootstraps assesses sensitivity to the treatment of
+observation-specific variance; comparing the wild bootstrap and the
+DWB assesses sensitivity to the treatment of serial dependence.
+
+**Restricted residuals and the role of the bandwidth.** All procedures
+resample residuals from the null (linear) model and generate samples
+around the fitted null mean. This targets $H_0$ but does not guarantee
+accurate finite-sample size. If the trend changes, these restricted
+residuals may contain an unmodelled kink as a slow, low-frequency
+pattern. Retaining more of this structure at longer DWB bandwidths may
+raise bootstrap critical values and reduce power. This is a possible
+mechanism, not a guarantee: p-values need not increase monotonically
+with bandwidth. Using residuals from the broken-trend fit while still
+generating samples around the null mean would give a different
+calibration. Its effects on size and power require a separate comparison
+and are not established here.
+
+**Bandwidth.** The primary bandwidth $\ell=6$ years follows the common
+$n^{1/3}$ rate ($n^{1/3}=$ `r fmt(n^(1/3), 2)`). Under the exponential
+kernel used below, it implies a multiplier correlation of
+$\exp(-1/6)\approx 0.85$ between consecutive years, $\exp(-1)\approx
+0.37$ at six years and about $0.14$ at twelve years. The residual
+autocorrelation in Section 3 is positive but moderate at short lags
+(calendar lag-one autocorrelation `r fmt(acf_gap$acf[2], 2)`), so a
+six-year kernel covers the short-range dependence without reaching
+deeply into the low-frequency trend component. The bandwidths $\ell=3$
+and $\ell=12$ are reported as sensitivity checks.
+
+## Bootstrap error generators
+
+The IID residual bootstrap samples centered residuals with replacement.
+It targets independent, identically distributed errors. The independent
+wild bootstrap multiplies each residual by an independent Rademacher
+sign, retaining its location-specific squared magnitude but removing
+serial dependence.
+
+The primary dependent wild bootstrap (DWB) uses correlated Gaussian
+multipliers:
+
+$$w_1\sim N(0,1),\quad a_i=\exp[-(s_i-s_{i-1})/\ell],\quad
+w_i=a_iw_{i-1}+\sqrt{1-a_i^2}z_i,$$
+
+where $z_i$ are independent standard Gaussians. This gives
+$\operatorname{Cov}(w_i,w_j)=\exp(-|s_i-s_j|/\ell)$. Using actual
+calendar gaps weakens multiplier dependence across missing years without
+imputing temperatures. The multiplier correlation is a chosen dependence
+approximation, not a fitted error autocorrelation.
+
+Residuals are centered and multiplied by $\sqrt{n/(n-p)}$: $p=2$ for the
+linear null and $p=3$ for the fitted broken alternative. This offsets
+residual shrinkage from estimating the linear coefficients. The primary
+bandwidth is six years, approximately $\operatorname{round}(n^{1/3})$.
+
+```{r dependent-wild-weights}
+dwb_weights <- function(design, B, ell = round(design$n^(1/3))) {
+  stopifnot(B >= 1L, ell > 0)
+  w <- matrix(rnorm(design$n * B), nrow = design$n, ncol = B)
+  a <- exp(-diff(design$year) / ell)
+  for (i in 2L:design$n)
+    w[i, ] <- a[i - 1L] * w[i - 1L, ] + sqrt(1 - a[i - 1L]^2) * w[i, ]
+  w
+}
+```
+
+```{r bootstrap-error-generator}
+bootstrap_errors <- function(e, year, B, method, ell = 6, df = 2) {
+  n <- length(e)
+  stopifnot(length(year) == n, n > df, all(is.finite(e)),
+            all(is.finite(year)), B >= 1L,
+            length(method) == 1L, method %in% c("iid", "wild", "dwb"))
+  e <- (e - mean(e)) * sqrt(n / (n - df))
+  switch(method,
+    iid = matrix(sample(e, n * B, replace = TRUE), nrow = n),
+    wild = e * matrix(2L * sample.int(2L, n * B, replace = TRUE) - 3L,
+                      nrow = n),
+    dwb = e * dwb_weights(list(n = n, year = year), B, ell))
+}
+```
+
+## Bootstrap algorithms
+
+### Algorithm A: bootstrap test of the no-break null
+
+All three procedures share the same null-imposed generation step and
+differ only in how $e_i^*$ is drawn. Let $\widehat y_{0i}$ and
+$\widehat e_{0i}$ denote the fitted values and residuals of the linear
+(no-break) null model `m0`, estimated by OLS on the full observed
+sample.
+
+1.  **Model estimated under the null.**
+    $y_i=\beta_0+\beta_1 t_i+\varepsilon_i$ is refit by OLS on the
+    observed data; $\widehat y_{0i}$ and $\widehat e_{0i}$ are held
+    fixed across every bootstrap replication and every procedure.
+2.  **Residuals/innovations resampled.** All three procedures resample
+    the null-model residuals $\widehat e_{0i}$ themselves; DWB reweights
+    them with a dependent multiplier rather than drawing a fresh
+    independent sample.
+3.  **Centering/rescaling.** In `bootstrap_errors()`, residuals are
+    first centered, $\widehat e_{0i}-\bar{\widehat e}_0$, then inflated
+    by $\sqrt{n/(n-p)}$ with $p=2$ (two null parameters) to offset the
+    standard OLS shrinkage of residual variance, before any resampling
+    is applied.
+4.  **Generating** $y_1^*,\dots,y_n^*$.
+    - *IID residual*:
+      $e^*=\text{sample}(\widehat e_0,\ \text{replace}=TRUE)$.
+    - *Independent wild*: $e_i^*=\widehat e_{0i}\cdot\xi_i$,
+      $\xi_i\overset{iid}{\sim}\{-1,+1\}$ equiprobable (Rademacher).
+    - *Dependent wild (DWB)*: $e_i^*=\widehat e_{0i}\cdot w_i$, with
+      $w_i$ a mean-zero, unit-variance Gaussian sequence,
+      $\operatorname{Cov}(w_i,w_j)
+      =\exp(-|s_i-s_j|/\ell)$ built from actual calendar years $s_i$
+      (`dwb_weights()`), $\ell=6$ for the primary specification.
+    - In every case $y_i^*=\widehat y_{0i}+e_i^*$; because the null mean
+      lies in the space spanned by the projected-out regressors, the
+      break statistic computed from $e^*$ alone equals the one computed
+      from $y^*$, so the code operates directly on $e^*$ for speed.
+5.  **Computing** $F_T^*$, the critical value and the $p$-value. For
+    every bootstrap draw, `break_statistics()` reruns the *entire* break
+    search over all admissible dates and returns
+    $F_T^*=RSS_0^*-\min_{T_c\in\Lambda}RSS_1^*(T_c)$ — the date is
+    reselected in each replication, never held fixed at $\widehat T_1$.
+    The empirical 95% critical value is the type-1 sample quantile of
+    $F_{T}^{*(1)},\dots,
+    F_{T}^{*(B)}$, and the $p$-value uses the finite-$B$ correction
+    $p=\bigl(1+\#\{b:F_{T,b}^*\ge F_T\}\bigr)/(B+1)$.
+6.  **Preserving dependence/heteroskedasticity.** IID residual bootstrap
+    preserves neither. Independent wild preserves each observation's own
+    residual magnitude (hence any heteroskedasticity in
+    $\widehat e_{0i}^2$) but destroys serial dependence, since $\xi_i$
+    is independent across $i$. DWB preserves both: $w_i$ has variance 1,
+    so $e_i^{*2}$ keeps the same conditional scale as
+    $\widehat e_{0i}^2$, while $\operatorname{Cov}(w_i,
+    w_j)\neq 0$ for nearby calendar years reproduces the short-range
+    positive serial dependence flagged by the Section 3 Durbin–Watson
+    test.
+
+| Element | IID residual | Independent wild | Dependent wild (primary) |
+|------------------|------------------|------------------|------------------|
+| Null model | linear trend `m0` | same | same |
+| Resampled quantity | centered/rescaled $\widehat e_0$ | same, sign-flipped | same, Gaussian-multiplier-weighted |
+| Centering/rescaling | mean 0, $\times\sqrt{n/(n-2)}$ | same | same |
+| $y^*$ generator | $\widehat y_0+\text{sample}(\widehat e_0)$ | $\widehat y_0+\widehat e_0\,\xi$ | $\widehat y_0+\widehat e_0\,w$ |
+| $F_T^*$, critical value, $p$-value | reselect break; type-1 quantile; $(1+\#\{\cdot\})/(B{+}1)$ | same | same |
+| Preserves dependence? | No | No | Yes ($\ell=6$ calendar years) |
+| Preserves heteroskedasticity? | No | Yes | Yes |
+
+### Algorithm B: bootstrap confidence intervals for the slopes
+
+The intervals use the primary DWB only and generate data under the
+fitted broken-trend alternative (Davison and Hinkley, 1997, ch. 5):
+
+1.  **Model estimated.** Fit the broken-trend model at $\widehat T_1$,
+    giving fitted values $\widehat y_{1i}$, residuals $\widehat e_{1i}$
+    and slope estimates
+    $\widehat\theta=(\widehat\beta,\ \widehat\beta+\widehat\delta)$.
+    Compute calendar-time HAC standard errors
+    $s=(s_{\mathrm{pre}},s_{\mathrm{post}})$ as described below.
+2.  **Centring and rescaling.** Centre $\widehat e_{1i}$ and multiply by
+    $\sqrt{n/(n-3)}$, reflecting the three regression coefficients.
+3.  **Bootstrap samples.** For $b=1,\ldots,B$ with $B=$ `r B_ci`, draw
+    DWB multipliers $w^{(b)}$ with $\ell=6$ and set
+    $y^{*(b)}_i=\widehat y_{1i}+\widehat e_{1i}\,w_i^{(b)}$.
+4.  **Re-estimation.** For each $y^{*(b)}$, repeat the entire break
+    search over $\Lambda$, re-estimate the model at the reselected date
+    $\widehat T_1^{*(b)}$, and record $\widehat\theta^{*(b)}$ and its
+    HAC standard errors $s^{*(b)}$, computed exactly as $s$.
+5.  **Intervals.** The percentile interval is
+    $[q_{0.025}(\widehat\theta^*),\ q_{0.975}(\widehat\theta^*)]$. The
+    percentile-$t$ interval uses
+    $t^{*(b)}=(\widehat\theta^{*(b)}-\widehat\theta)/s^{*(b)}$ and is
+    $[\widehat\theta-q_{0.975}(t^*)\,s,\ \widehat\theta-q_{0.025}(t^*)\,s]$.
+6.  **Dependence and heteroskedasticity.** As in Algorithm A, the DWB
+    multipliers preserve short-range dependence and observation-specific
+    variance. Re-selecting the date in step 4 carries break-date
+    uncertainty into the slope intervals.
+
+## Bootstrap test of the no-break null
+
+For a break test, bootstrap samples must impose the no-break null. Fit
+the linear model, generate $e_i^*$ from its residuals, and form
+$y_i^*=\widehat y_{0i}+e_i^*$. Refit the null and search every
+admissible break in each draw. Because the linear mean lies in the
+projected-out space, evaluating the statistic on $e^*$ alone is
+algebraically identical and faster.
+
+The 95% critical value uses the type-1 empirical quantile. The corrected
+upper-tail probability is
+
+$$p=\frac{1+\sum_{b=1}^B\mathbf 1\{F_{T,b}^*\ge F_T\}}{B+1}.$$
+
+The null is rejected at the 5% level when $p\le 0.05$. The function
+below implements Algorithm A and is also used in the simulation study of
+Section 5; for the empirical application, the subsequent chunk stores
+all bootstrap statistics for plotting.
+
+```{r bootstrap-test-function}
+bootstrap_break <- function(y, design, B = 999L,
+                            methods = c("iid", "wild", "dwb"),
+                            seed = NULL, ell = round(design$n^(1/3)),
+                            level = 0.05, keep_statistics = FALSE) {
+  B <- as.integer(B)
+  stopifnot(B >= 1L, level > 0, level < 1,
+            length(methods) > 0, all(methods %in% c("iid", "wild", "dwb")),
+            !anyDuplicated(methods))
+  if (!is.null(seed)) set.seed(seed)
+  observed <- fit_break(y, design)
+  # Null-restricted residuals enforce the hypothesis in every bootstrap draw.
+  # Degrees-of-freedom correction offsets shrinkage from estimating two terms.
+  e <- observed$null_residuals
+  results <- vector("list", length(methods)); names(results) <- methods
+  for (method in methods) {
+    boot_errors <- bootstrap_errors(e, design$year, B, method, ell, df = 2)
+    # Adding the fitted null trend leaves this residual-projection statistic
+    # unchanged, so computing directly from bootstrap errors is exact.
+    Fstar <- break_statistics(boot_errors, design)$F
+    p <- (1 + sum(Fstar >= observed$F)) / (B + 1)
+    result <- list(method = method, F = observed$F, p_value = p,
+                   critical = unname(quantile(Fstar, 1 - level, type = 1)),
+                   reject = p <= level, B = B, level = level,
+                   ell = if (method == "dwb") ell else NA_real_)
+    if (keep_statistics) result$statistics <- Fstar
+    results[[method]] <- result
+  }
+  list(observed = observed, results = results)
+}
+```
+
+```{r empirical-bootstrap-tests}
+methods <- c("iid", "wild", "dwb")
+
+btests <- list()
+
+draws <- list()
+
+for (j in seq_along(methods)) {
+    set.seed(seed + 100L + j)
+    err <- bootstrap_errors(e0, year, B_test, method = methods[j], ell = 6, df = 2)
+    fs <- break_statistics(err, design)$F
+    draws[[methods[j]]] <- fs
+    btests[[j]] <- data.frame(method = methods[j], ell = ifelse(methods[j] == "dwb", 6, NA), 
+        B = B_test, statistic = Fobs, critical95 = quantile(fs, 0.95, type = 1, names = FALSE), 
+        p_value = (1 + sum(fs >= Fobs))/(B_test + 1), exceedances = sum(fs >= Fobs))
+}
+
+for (ell in c(3L, 12L)) {
+    set.seed(seed + 200L + ell)
+    err <- bootstrap_errors(e0, year, B_test, method = "dwb", ell = ell, df = 2)
+    fs <- break_statistics(err, design)$F
+    btests[[length(btests) + 1]] <- data.frame(method = "dwb", ell = ell, B = B_test, statistic = Fobs, 
+        critical95 = quantile(fs, 0.95, type = 1, names = FALSE), p_value = (1 + sum(fs >= 
+            Fobs))/(B_test + 1), exceedances = sum(fs >= Fobs))
+}
+
+btests <- do.call(rbind, btests)
+
+write_csv(btests, "tables/bootstrap_tests.csv")
+
+```
+
+```{r bootstrap-test-table}
+bootstrap_table <- btests
+bootstrap_table$Procedure <- c("IID residual", "Independent wild", "Dependent wild: ell=6",
+                               "Dependent wild: ell=3", "Dependent wild: ell=12")
+bootstrap_table$Decision <- ifelse(bootstrap_table$p_value <= .05, "Reject", "Do not reject")
+knitr::kable(bootstrap_table[, c("Procedure", "B", "statistic", "critical95", "p_value", "Decision")],
+             digits = 4, caption = "Unknown-break tests and dependent-wild bandwidth sensitivity")
+```
+
+Each procedure uses `r B_test` bootstrap replications. The primary DWB
+with $\ell=6$ gives $p=$
+`r fmt(btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6])`,
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05) "which rejects the no-break null at the 5% level" else "which does not reject the no-break null at the 5% level"`.
+With $\ell=3$ the p-value is
+`r fmt(btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 3])`,
+and with $\ell=12$ it is
+`r fmt(btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 12])`.
+The p-values increase with bandwidth in these runs. The possible
+restricted-residual mechanism discussed above is one explanation, but
+this pattern is not a general monotonicity property of the DWB.
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05 && btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 12] > 0.05 && btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 12] <= 0.10) "The ell = 12 result lies just above the 5% threshold. The conclusion at the conventional level is therefore bandwidth-sensitive, and the evidence for a break is better described as moderate than as decisive." else if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05 && btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 12] > 0.10) "The longer bandwidth does not reject, so the conclusion at the conventional level depends on the bandwidth." else ""`
+
+If the no-break null is not rejected under a given specification,
+$\widehat T_1=$ `r year[k]` cannot be read as an identified break point
+under that specification. The search always returns *some* date, because
+it is defined as an arg-min over $\Lambda$, but a date obtained
+alongside an unrejected test is a descriptive optimum of this sample,
+not evidence that the population trend changed there. The fitted broken
+trend is then one flexible descriptive fit nested against the linear
+trend, not a confirmed two-regime model.
+
+The IID residual and independent wild bootstraps give p-values of
+`r fmt(btests$p_value[1])` and `r fmt(btests$p_value[2])`.
+`r if (all(btests$exceedances[1:2] == 0)) "Neither produced a single bootstrap statistic as large as the observed one, so both p-values equal the smallest attainable value 1/(B+1). This reflects finite simulation resolution, not a zero tail probability or a confidence bound on the underlying tail probability." else ""`
+Both procedures reject at the 5% level, but their common rejection
+decision does not establish that observation-specific variance is
+unimportant. Their identical minimum p-values cannot resolve differences
+below the simulation resolution. The contrast between these two
+procedures and the DWB shows that the
+evidence depends on how serial dependence is treated. Because the
+independent procedures ignore the dependence detected in Section 3,
+their smaller p-values do not override the primary calibration; Section
+5 shows that such procedures over-reject when errors are autocorrelated.
+
+```{r bootstrap_null-plot, fig.cap="Null bootstrap distributions under the three primary procedures; the dashed line marks the observed RSS reduction.", out.width="100%"}
+plot_pair("bootstrap_null", function() {
+    setup()
+    dd <- lapply(draws, density)
+    xmax <- max(Fobs, sapply(draws, quantile, 0.99))
+    plot(dd[[1]], xlim = c(0, xmax * 1.05), col = gray, lwd = 2, xlab = "Maximum RSS reduction (degrees C squared)", 
+        ylab = "Bootstrap density", main = "")
+    lines(dd[[2]], col = navy, lwd = 2)
+    lines(dd[[3]], col = teal, lwd = 2)
+    abline(v = Fobs, col = rust, lwd = 2, lty = 2)
+    legend("topright", c("IID residual", "Independent wild", "Dependent wild", "Observed"), col = c(gray, 
+        navy, teal, rust), lty = c(1, 1, 1, 2), lwd = 2, bty = "n", cex = 0.8)
+}, 8, 4.3)
+
+knitr::include_graphics(file.path(artifact_root, "figures/bootstrap_null.png"))
+
+```
+
+## Estimated broken trend in light of the test
+
+At $\widehat T_1=$ `r year[k]`, the estimated pre-break trend is
+$\widehat\beta=$ `r fmt(coef(m1)[2])` °C per decade, the estimated
+change in trend is $\widehat\delta=$ `r fmt(coef(m1)[3])` °C per decade,
+and the estimated post-break trend is $\widehat\beta+\widehat\delta=$
+`r fmt(sum(coef(m1)[2:3]))` °C per decade
+(`r fmt(10 * sum(coef(m1)[2:3]), 2)` °C per century). Over the
+`r max(year) - year[k]` years from the estimated break to the end of the
+record, the post-break slope implies a fitted warming of about
+`r fmt(sum(coef(m1)[2:3]) * (max(year) - year[k]) / 10, 2)` °C, compared
+with `r fmt(beta1_hat * (max(year) - year[k]) / 10, 2)` °C implied by
+the single linear trend over the same period.
+
+Two statements must be kept apart. The first is descriptive: among all
+continuous one-break trends, the one with a kink at `r year[k]` fits
+best, and it describes the record as
+`r if (coef(m1)[2] < 0) "slight cooling" else "slight warming"` followed
+by clearer warming. The second is inferential: whether the data provide
+evidence that the trend changed at all. That question is answered by the
+bootstrap test above, which
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05) "supports a break under the primary procedure, subject to the bandwidth sensitivity noted there" else "does not support a break at the 5% level under the primary procedure"`.
+The estimated slopes and date are meaningful as a description regardless
+of the test outcome, but they can be read as an estimate of a structural
+change only to the extent that the test supports one. The uncertainty of
+the slopes is quantified next.
+
+## Bootstrap confidence intervals for the slopes
+
+### Studentisation: calendar-time HAC standard errors
+
+The percentile-$t$ interval requires a standard error in every bootstrap
+sample, so that the studentised statistic $t^*$ is approximately
+pivotal, which typically makes the interval more accurate than the
+percentile interval. Because the errors are serially dependent,
+conventional OLS standard errors would misstate the sampling
+variability, so we use a heteroskedasticity and autocorrelation
+consistent (HAC) estimator in the spirit of Newey and West (1987),
+adapted to calendar time.
+
+Confidence intervals generate data under the **fitted broken
+alternative**, rather than the null. Each draw repeats the date search
+and re-estimates both slopes. Percentile intervals use the bootstrap
+slope quantiles. Studentized percentile-$t$ intervals also recompute a
+standard error in every draw.
+
+The local Jacobian contains the date derivative:
+
+$$J_i=[1,x_i,(x_i-\tau)_+,-\widehat\delta\mathbf 1(x_i>\tau)],\qquad \tau=x_{\widehat k}.$$
+
+For numerical stability, the fourth column is rescaled to the indicator
+$\mathbf 1(x_i>\tau)$. With a nonzero slope change, this does not change
+the covariance of the first three coefficients. The pre- and post-break
+contrasts are $(0,1,0,0)$ and $(0,1,1,0)$.
+
+The calendar Bartlett kernel is $K_{ij}=\max\{1-|s_i-s_j|/7,0\}$. Only
+observed pairs exactly one to six calendar years apart enter the lag
+terms. The finite-sample multiplier is $n/(n-4)$, counting the local
+date parameter as well as the three regression coefficients. This is a
+local HAC approximation, and weak date identification can limit
+coverage.
+
+```{r calendar-hac-standard-errors}
+calendar_hac_se <- function(year, X, e, L=6) {
+  n <- nrow(X); p <- ncol(X); A <- solve(crossprod(X))
+  C <- cbind(c(0,1,0,0),c(0,1,1,0))
+  influence <- (X %*% A %*% C)*as.numeric(e)
+  v <- colSums(influence^2)
+  for (lag in seq_len(L)) {
+    j <- match(year+lag,year); i <- which(!is.na(j))
+    if(length(i)) v <- v+2*(1-lag/(L+1))*colSums(influence[i,,drop=FALSE]*influence[j[i],,drop=FALSE])
+  }
+  sqrt(pmax(v*n/(n-p),.Machine$double.eps))
+}
+```
+
+### Bootstrap samples under the alternative
+
+The alternative residual scaling uses three linear coefficients, while
+the local sandwich uses four parameters including the date; these
+corrections serve different roles. The bootstrap loop records reselected
+dates, slope estimates and their HAC standard errors, making the
+reported intervals independently reconstructible.
+
+```{r confidence-interval-refits}
+# Alternative bootstrap: both break location and slope estimates are refitted.
+set.seed(seed+301L)
+err<-bootstrap_errors(e1,year,B_ci,method="dwb",ell=6,df=3)
+Ystar<-as.numeric(fitted(m1))+err
+coefstar<-sestar<-matrix(NA_real_,B_ci,2); breakyears<-integer(B_ci)
+seobs<-calendar_hac_se(year,cbind(X1,as.numeric(x>x[k])),e1)
+for (b in seq_len(B_ci)) {
+  ff<-fit_break(Ystar[,b],design); kk<-ff$index
+  XX<-cbind(1,x,pmax(0,x-x[kk])); fit<-lm.fit(XX,Ystar[,b])
+  coefstar[b,]<-c(fit$coefficients[2],sum(fit$coefficients[2:3]))
+  sestar[b,]<-calendar_hac_se(year,cbind(XX,as.numeric(x>x[kk])),fit$residuals)
+  breakyears[b]<-year[kk]
+}
+```
+
+For either slope $\theta$, the percentile interval is
+$[q_{.025}(\widehat\theta^*),q_{.975}(\widehat\theta^*)]$. For the
+studentized interval, calculate
+
+$$t^*=\frac{\widehat\theta^*-\widehat\theta}{s^*},\qquad
+[\widehat\theta-q_{.975}(t^*)s,\ \widehat\theta-q_{.025}(t^*)s].$$
+
+CI quantiles use R's interpolated type 7. Notice the reversed quantile
+order in the studentized endpoints. Holding the selected date fixed in
+bootstrap samples would omit part of slope uncertainty.
+
+```{r construct-confidence-intervals}
+tstar<-sweep(sweep(coefstar,2,theta,"-"),c(1,2),sestar,"/")
+cis<-do.call(rbind,lapply(1:2,function(j){
+  pc<-quantile(coefstar[,j],c(.025,.975),type=7,names=FALSE)
+  qt<-quantile(tstar[,j],c(.975,.025),type=7,names=FALSE)
+  pt<-theta[j]-seobs[j]*qt
+  data.frame(parameter=c("pre","post")[j],estimate=unname(theta[j]),hac_se=unname(seobs[j]),
+             type=c("percentile","percentile_t"),lower=c(pc[1],pt[1]),upper=c(pc[2],pt[2]),B=B_ci)
+}))
+write_csv(cis,"tables/confidence_intervals.csv")
+knitr::kable(cis, digits = 4, caption = "Nominal 95% intervals in degrees C per decade")
+```
+
+`r if (all(cis$lower[cis$parameter == "pre"] <= 0 & cis$upper[cis$parameter == "pre"] >= 0)) "Both pre-break intervals contain zero. Statistically, the data are compatible with no trend before the break; substantively, the negative point estimate does not establish early cooling." else "At least one pre-break interval excludes zero."`
+`r if (all(cis$lower[cis$parameter == "post"] > 0)) "Both post-break intervals lie entirely above zero. Statistically, a zero post-break slope is not supported within the broken-trend model; substantively, this indicates sustained warming at this station after the estimated break." else "At least one post-break interval contains zero."`
+These intervals are conditional on the broken-trend specification and do
+not by themselves test whether a break exists. Their coverage has not
+been evaluated by simulation (Section 5 studies test size and power
+only), and the percentile-$t$ intervals rely on a local HAC
+approximation, which may be less accurate where the date is weakly
+identified.
+
+```{r slope_intervals-plot, fig.cap="Percentile and percentile-t intervals; the vertical reference marks zero slope.", out.width="100%"}
+plot_pair("slope_intervals", function() {
+    setup()
+    par(mar = c(4.2, 8.3, 1.5, 1))
+    yy <- 4:1
+    cols <- rep(c(navy, teal), 2)
+    plot(cis$estimate, yy, xlim = range(c(cis$lower, cis$upper, 0)), ylim = c(0.5, 4.5), 
+        yaxt = "n", xlab = "Temperature trend (degrees C per decade)", ylab = "", pch = 16, 
+        col = cols)
+    segments(cis$lower, yy, cis$upper, yy, col = cols, lwd = 2)
+    abline(v = 0, lty = 3, col = gray)
+    axis(2, at = yy, labels = c("Pre: percentile", "Pre: percentile-t", "Post: percentile", 
+        "Post: percentile-t"), las = 1, tick = FALSE, cex.axis = 0.8)
+}, 8, 3.8)
+
+knitr::include_graphics(file.path(artifact_root, "figures/slope_intervals.png"))
+
+```
+
+```{r break_bootstrap_distribution-plot, fig.cap="Reselected dates across all alternative-bootstrap samples.", out.width="100%"}
+plot_pair("break_bootstrap_distribution", function() {
+    setup()
+    hist(breakyears, breaks = seq(min(year[candidates]) - 0.5, max(year[candidates]) + 4.5, 
+        by = 5), col = teal_fill, border = "white", xlab = "Reselected break year", ylab = "Bootstrap replications", 
+        main = "")
+    abline(v = year[k], col = navy, lwd = 2)
+}, 8, 4)
+
+knitr::include_graphics(file.path(artifact_root, "figures/break_bootstrap_distribution.png"))
+
+```
+
+```{r date-variation-summary}
+knitr::kable(data.frame(
+  Lower_date_percentile = unname(quantile(breakyears, .025)),
+  Upper_date_percentile = unname(quantile(breakyears, .975)),
+  Boundary_selection_percent = 100 * mean(breakyears %in% range(year[candidates]))
+), digits = 2)
+```
+
+The date percentiles describe selection variability under the fitted
+alternative. They are not an established 95% confidence set for a weakly
+identified break date. The spread of reselected dates contributes to the
+width and possible asymmetry of the slope intervals.
+
+## Model comparison and residual diagnostics
+
+RSS, in-sample RMSE and $R^2$ describe fit. A searched model is more
+flexible, so improvement alone is not selection-adjusted evidence. The
+bootstrap addresses that distinction. The broken residuals should also
+be inspected rather than assuming that a new mean model removes
+dependence.
+
+```{r model-comparison}
+diagnostic<-function(m,label){
+  e<-resid(m); bb<-n*summary(lm(e^2~x))$r.squared
+  data.frame(model=label,RSS=sum(e^2),RMSE=sqrt(mean(e^2)),R2=summary(m)$r.squared,
+    adjusted_R2=summary(m)$adj.r.squared,DW=sum(diff(e)^2)/sum(e^2),
+    acf1=acf(e,plot=FALSE)$acf[2],BP=bb,BP_p=pchisq(bb,1,lower.tail=FALSE))
+}
+dg<-rbind(diagnostic(m0,"linear"),diagnostic(m1,"broken"))
+write_csv(dg,"tables/model_diagnostics.csv")
+knitr::kable(dg, digits = 4, caption = "Fit measures and remaining residual dependence")
+```
+
+The reduction in RSS is `r fmt(100 * Fobs / sum(e0^2), 2)`%. RMSE falls
+from `r fmt(dg$RMSE[1], 3)` to `r fmt(dg$RMSE[2], 3)` °C, and $R^2$
+rises from `r fmt(dg$R2[1], 3)` to `r fmt(dg$R2[2], 3)`. Most annual
+variation remains unexplained by either model.
+
+Because the broken model estimates a break date in addition to its three
+coefficients, adjusted $R^2$, which counts only three parameters,
+slightly overstates its advantage. A Bayesian information criterion that
+counts the date as a fourth parameter,
+$\mathrm{BIC}=n\log(RSS/n)+p\log n$, equals
+`r fmt(n * log(dg$RSS[1] / n) + 2 * log(n), 1)` for the linear model
+($p=2$) and `r fmt(n * log(dg$RSS[2] / n) + 4 * log(n), 1)` for the
+broken model ($p=4$),
+`r if ((n * log(dg$RSS[2] / n) + 4 * log(n)) < (n * log(dg$RSS[1] / n) + 2 * log(n))) "so the broken trend is preferred even after this penalty" else "so the linear trend is preferred once the date is penalised"`.
+Because the break date enters the model non-regularly, BIC is only a
+heuristic here; the bootstrap test remains the formal comparison.
+
+The Durbin–Watson statistic of the broken-trend residuals
+(`r fmt(dg$DW[2], 3)`) is closer to two than that of the linear model
+(`r fmt(dg$DW[1], 3)`), and the observation-lag ACF(1) falls from
+`r fmt(dg$acf1[1], 3)` to `r fmt(dg$acf1[2], 3)`. These values are not
+formally calibrated: the design now depends on the estimated date, so
+the Section 3 critical values do not apply. Together with the residual
+ACF below, they indicate that the kink absorbs part, but not all, of the
+residual dependence, which supports using a dependence-robust bootstrap
+for the slope intervals.
+
+```{r diagnostics_broken-plot, fig.cap="Residual diagnostics after selecting the broken trend; dependence remains visible.", out.width="100%"}
+plot_pair("diagnostics_broken", function() {
+    par(mfrow = c(2, 2), mar = c(4, 4, 2, 0.7), mgp = c(2.5, 0.7, 0),
+        col.axis = axis_colour, col.lab = label_colour,
+        col.main = label_colour, cex = 0.8)
+    plot(year, e1, pch = 16, cex = 0.5, col = gray, xlab = "Calendar year", ylab = "Residual (degrees C)", 
+        main = "Broken-trend residuals")
+    abline(h = 0, col = navy, lty = 2)
+    acf(e1, lag.max = 20, main = "", xlab = "Observation lag", ylab = "Autocorrelation", 
+        col = navy, ci.col = teal)
+    title("ACF by observation lag", line = 0.6, cex.main = 1.1)
+    plot(year, e1^2, pch = 16, cex = 0.5, col = gray, xlab = "Calendar year", ylab = "Squared residual (degrees C squared)", 
+        main = "Residual variance")
+    lines(lowess(year, e1^2, f = 0.3), col = teal, lwd = 2)
+    qqnorm(e1, pch = 16, cex = 0.5, col = gray, main = "Normal QQ plot", ylab = "Residual quantile (degrees C)")
+    qqline(e1, col = teal, lwd = 2)
+}, 8, 6)
+
+knitr::include_graphics(file.path(artifact_root, "figures/diagnostics_broken.png"))
+
+```
+
+**Overall comparison.** Substantively, the broken trend is the more
+convincing description: it replaces a single average slope with a
+flat-to-cooling phase followed by warming, matches the pattern seen in
+Section 2, and yields a post-break slope
+`r fmt(sum(coef(m1)[2:3]) / beta1_hat, 1)` times the linear slope.
+Statistically, the case is
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05) "supported but not decisive" else "weak"`:
+`r if ((n * log(dg$RSS[2] / n) + 4 * log(n)) < (n * log(dg$RSS[1] / n) + 2 * log(n))) "the fit improvement survives a penalty for the additional parameters" else "the fit improvement does not survive a penalty for the additional parameters"`
+and the primary bootstrap test
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05) "rejects" else "does not reject"`
+the linear model, but the conclusion is sensitive to the dependence
+bandwidth, and residual dependence remains in both models.
+
+## Sensitivity to individual observations
+
+Two descriptive checks omit the coldest observation in 1851 or end the
+sample in 1980, excluding the four observations after the long gap. Each
+check reselects the break using 15% trimming. These are point-estimate
+sensitivities, not new bootstrap significance tests. Every primary
+result above retains the complete supplied sample.
+
+```{r sample-sensitivity}
+# Secondary diagnostics only: retain the complete sample for every primary result.
+sensitivities <- list(no_coldest = which(year != 1851), pre_gap = which(year <= 1980))
+
+ss <- lapply(names(sensitivities), function(label) {
+    ii <- sensitivities[[label]]
+    fit <- fit_break(y[ii], prepare_design(year[ii]))
+    xx <- (year[ii] - mean(year[ii]))/10
+    mm <- lm(y[ii] ~ xx + I(pmax(0, xx - xx[fit$index])))
+    data.frame(sample = label, n = length(ii), break_year = year[ii][fit$index], pre = coef(mm)[2], 
+        post = sum(coef(mm)[2:3]), F = fit$F)
+})
+
+write_csv(do.call(rbind, ss), "tables/sample_sensitivity.csv")
+
+sample_sensitivity <- read.csv("tables/sample_sensitivity.csv")
+
+knitr::kable(sample_sensitivity, digits = 4)
+
+```
+
+Excluding 1851 moves the selected date to
+`r sample_sensitivity$break_year[1]` and changes $F_T$ from
+`r fmt(Fobs, 2)` to `r fmt(sample_sensitivity$F[1], 2)`. Ending the
+sample in 1980 selects `r sample_sensitivity$break_year[2]`, with a
+post-break slope of `r fmt(sample_sensitivity$post[2], 4)` °C per
+decade. The estimated location of the kink is therefore not an artefact
+of the coldest year alone or of the four post-gap observations, although
+the coldest year does contribute to the strength of the fit. These
+checks do not address unknown station history, model selection or the
+missing decades.
+
+## Stored empirical outputs
+
+All empirical tables, the fitted series, the break-search profile and
+the bootstrap draws underlying the confidence intervals are written to
+the working folder, so that every reported number can be reconstructed
+without rerunning the bootstrap (see Appendix A).
+
+```{r empirical-output-tables}
+missing <- setdiff(seq(min(year), max(year)), year)
+
+summary <- c(n = n, start = min(year), end = max(year), missing_years = length(missing), 
+    mean_year = mean(year), centering_year = 1850, mean = mean(y), sd = sd(y), min = min(y), min_year = year[which.min(y)], 
+    max = max(y), max_year = year[which.max(y)], intercept = coef(m0)[1], linear_slope = coef(m0)[2], 
+    DW = dw, DW_lower = dwcrit[1], DW_upper = dwcrit[2], DW_p = dwp, BP = bp, BP_p = bpp, 
+    break_year = year[k], break_index = k, search_first = year[min(candidates)], search_last = year[max(candidates)], 
+    broken_intercept = coef(m1)[1], pre = theta[1], delta = coef(m1)[3], post = theta[2], 
+    F = Fobs, sigma = sqrt(sum(e1^2)/(n - 3)), rss_reduction_percent = 100 * Fobs/sum(e0^2), 
+    ci_break_min = min(breakyears), ci_break_max = max(breakyears), ci_break_lower = quantile(breakyears, 
+        0.025, names = FALSE), ci_break_upper = quantile(breakyears, 0.975, names = FALSE), 
+    ci_boundary_percent = 100 * mean(breakyears %in% range(year[candidates])))
+
+names(summary) <- sub("\\..*$", "", names(summary))
+
+write_csv(data.frame(metric = names(summary), value = as.numeric(summary)), "tables/empirical_summary.csv")
+
+write_csv(data.frame(Year = year, Temperature = y, Linear = fitted(m0), Broken = fitted(m1), 
+    LinearResidual = e0, BrokenResidual = e1), "tables/series_fits.csv")
+
+write_csv(data.frame(year = year[candidates], RSS = rss, reduction = sum(e0^2) - rss), "tables/break_profile.csv")
+
+write_csv(data.frame(Year = missing), "tables/missing_years.csv")
+
+write_csv(data.frame(year = breakyears, pre = coefstar[, 1], post = coefstar[, 2], se_pre = sestar[, 
+    1], se_post = sestar[, 2]), "tables/ci_draws.csv")
+
+saveRDS(list(summary = summary, tests = btests, ci = cis, diagnostics = dg, draws = draws, 
+    breakyears = breakyears, design = design, seed = seed, missing = missing), "work/empirical_results.rds")
+
+```
+
+# Simulation study of bootstrap procedures
+
+## Data-generating process and experimental factors
+
+The simulation uses 226 equally spaced annual observations and a central
+true break at index 113:
+
+$$y_t=9.5-0.05x_t+\delta(x_t-x_{113})_++\varepsilon_t,\quad
+x_t=(t-\bar t)/10,$$
+
+$$\varepsilon_t=\rho\varepsilon_{t-1}+\sigma_tu_t,\qquad u_t\sim N(0,1).$$
+
+Eight scenarios cross $\delta\in\{0,0.14\}$, $\rho\in\{0,0.4\}$ and
+constant or increasing innovation scale. When $\delta=0$, rejection
+frequency estimates **size** under the no-break null; when
+$\delta=0.14$, it estimates **power**. The slope change approximates the
+empirical estimate.
+
+The common innovation scale is calibrated from the empirical
+broken-model residual standard deviation,
+$\widehat\sigma=\sqrt{RSS_1/(n-3)}$. For the increasing profile, scales
+ranging from 0.5 to 1.5 are normalized to have mean square one. This
+matches average innovation variance across scale conditions; it does not
+fix marginal error variance across values of $\rho$.
+
+Initialization is stationary for constant scale and a local
+initialization for changing scale. Unlike the empirical design, the
+simulated calendar has no missing years; it isolates the selected
+dependence and variance factors.
+
+```{r simulation-data-generator}
+simulate_broken_trend <- function(design, delta, rho, heteroskedastic,
+                                  sigma, alpha = 9.5, beta = -0.05,
+                                  break_index = floor(design$n / 2)) {
+  n <- design$n
+  scale_profile <- if (heteroskedastic) seq(0.5, 1.5, length.out = n) else rep(1, n)
+  # Match average innovation variance across variance-profile conditions.
+  scale_profile <- scale_profile / sqrt(mean(scale_profile^2))
+  sigma_t <- sigma * scale_profile
+  u <- rnorm(n)
+  error <- numeric(n)
+  # Stationary initialization under the initial innovation scale. For changing
+  # sigma_t this is a local initialization, not global stationarity.
+  error[1L] <- sigma_t[1L] * u[1L] / sqrt(1 - rho^2)
+  for (i in 2L:n) error[i] <- rho * error[i - 1L] + sigma_t[i] * u[i]
+  alpha + beta * design$x +
+    delta * pmax(0, design$x - design$x[break_index]) + error
+}
+```
+
+## Monte Carlo uncertainty
+
+If $r$ of $M$ datasets reject, the rejection frequency is
+$\widehat p=r/M$ and its Monte Carlo standard error is
+$\sqrt{\widehat p(1-\widehat p)/M}$. We also report Wilson intervals.
+Unlike a plug-in standard error, these remain informative at a rejection
+rate of 100%. They measure uncertainty in simulation frequencies, not
+empirical slope uncertainty.
+
+```{r wilson-interval}
+wilson_interval <- function(successes, trials, level = 0.95) {
+  z <- qnorm((1 + level) / 2)
+  p <- successes / trials
+  den <- 1 + z^2 / trials
+  ctr <- (p + z^2 / (2 * trials)) / den
+  half <- z * sqrt(p * (1 - p) / trials + z^2 / (4 * trials^2)) / den
+  c(lower = max(0, ctr - half), upper = min(1, ctr + half))
+}
+```
+
+## Run and checkpoint all scenarios
+
+Every scenario uses $M=1,000$ datasets, and each dataset receives all
+three bootstrap tests with $B=499$. This totals 8,000 datasets, 24,000
+tests and 11,976,000 bootstrap draws. DWB uses bandwidth six.
+
+Dataset $m$ in scenario $c$ receives seed $20260926+100000c+m$.
+Consequently, changing worker scheduling does not change its random
+stream. Methods use the same simulated datasets. Each complete scenario
+is checkpointed together with every setting affecting its statistical
+computation. Checkpoints with changed settings are recomputed, and an
+incomplete scenario is not accepted.
+
+```{r simulation-engine}
+run_simulation <- function(M = 1000L, B = 499L, n = 226L,
+                           sigma = NULL, seed = 20260926L,
+                           workers = min(4L, parallel::detectCores()),
+                           checkpoint_dir = "work/simulation",
+                           summary_file = "tables/simulation_summary.csv",
+                           raw_file = "work/simulation/simulation_results.rds",
+                           resume = TRUE) {
+  if (is.null(sigma)) {
+    station <- read.csv(file.path(project_root, "Station08.csv"))
+    station <- station[order(station$Year), ]
+    empirical <- fit_break(station$Temperature, prepare_design(station$Year))
+    sigma <- sqrt(empirical$RSS1 / (nrow(station) - 3L))
+  }
+  stopifnot(M >= 1000L, B >= 499L, n >= 10L, sigma > 0, workers >= 1L)
+  design <- prepare_design(seq_len(n), trim = 0.15)
+  settings <- list(M = as.integer(M), B = as.integer(B), n = as.integer(n),
+                   sigma = sigma, seed = as.integer(seed), alpha = 9.5,
+                   beta = -0.05, break_index = floor(n / 2),
+                   trim = 0.15, level = 0.05, ell = round(n^(1/3)),
+                   statistic = "raw RSS reduction", engine_version = 1L)
+  scenarios <- expand.grid(delta = c(0, 0.14), rho = c(0, 0.4),
+                           heteroskedastic = c(FALSE, TRUE),
+                           KEEP.OUT.ATTRS = FALSE)
+  scenarios$config <- seq_len(nrow(scenarios))
+  dir.create(checkpoint_dir, showWarnings = FALSE, recursive = TRUE)
+  dir.create(dirname(summary_file), showWarnings = FALSE, recursive = TRUE)
+  dir.create(dirname(raw_file), showWarnings = FALSE, recursive = TRUE)
+  all_raw <- vector("list", nrow(scenarios))
+  start <- Sys.time()
+  for (s in seq_len(nrow(scenarios))) {
+    scenario <- scenarios[s, ]
+    signature <- list(settings = settings, scenario = scenario)
+    checkpoint <- file.path(checkpoint_dir, sprintf("config_%02d.rds", s))
+    cached <- if (resume && file.exists(checkpoint)) readRDS(checkpoint) else NULL
+    if (!is.null(cached) && identical(cached$signature, signature) &&
+        nrow(cached$raw) == M) {
+      all_raw[[s]] <- cached$raw
+      message(sprintf("Scenario %d/8: reused verified complete checkpoint.", s))
+      next
+    }
+    one_replication <- function(replication) {
+      # Seeds do not depend on worker scheduling or the number of workers.
+      replicate_seed <- as.integer(seed + s * 100000L + replication)
+      set.seed(replicate_seed)
+      y <- simulate_broken_trend(design, delta = scenario$delta,
+                                 rho = scenario$rho,
+                                 heteroskedastic = scenario$heteroskedastic,
+                                 sigma = sigma)
+      fit <- bootstrap_break(y, design, B = B, ell = settings$ell,
+                             level = settings$level)
+      out <- c(replication = replication, replicate_seed = replicate_seed,
+               F = fit$observed$F, estimated_break_index = fit$observed$index)
+      for (method in c("iid", "wild", "dwb")) {
+        out[paste0(method, "_p")] <- fit$results[[method]]$p_value
+        out[paste0(method, "_critical")] <- fit$results[[method]]$critical
+        out[paste0(method, "_reject")] <- as.integer(fit$results[[method]]$reject)
+      }
+      out
+    }
+    replications <- if (.Platform$OS.type != "windows" && workers > 1L) {
+      parallel::mclapply(seq_len(M), one_replication, mc.cores = workers,
+                        mc.preschedule = TRUE, mc.set.seed = FALSE)
+    } else lapply(seq_len(M), one_replication)
+    if (any(vapply(replications, inherits, logical(1), "try-error")))
+      stop("A simulation worker failed; no incomplete scenario was saved.")
+    raw <- as.data.frame(do.call(rbind, replications))
+    raw$config <- s
+    raw$delta <- scenario$delta
+    raw$rho <- scenario$rho
+    raw$heteroskedastic <- scenario$heteroskedastic
+    all_raw[[s]] <- raw
+    saveRDS(list(signature = signature, raw = raw), checkpoint, version = 3)
+    message(sprintf("Scenario %d/8 complete: delta=%.2f, rho=%.1f, heteroskedastic=%s; elapsed %.1f s.",
+                    s, scenario$delta, scenario$rho, scenario$heteroskedastic,
+                    as.numeric(difftime(Sys.time(), start, units = "secs"))))
+  }
+  raw <- do.call(rbind, all_raw)
+  rownames(raw) <- NULL
+  summaries <- list()
+  i <- 0L
+  for (s in seq_len(nrow(scenarios))) for (method in c("iid", "wild", "dwb")) {
+    i <- i + 1L
+    subsample <- raw[raw$config == s, ]
+    rejections <- sum(subsample[[paste0(method, "_reject")]])
+    rate <- rejections / M
+    interval <- wilson_interval(rejections, M)
+    summaries[[i]] <- data.frame(config = s, delta = scenarios$delta[s],
+      rho = scenarios$rho[s], heteroskedastic = scenarios$heteroskedastic[s],
+      estimand = if (scenarios$delta[s] == 0) "size" else "power", method = method,
+      M = M, B = B, n = n, sigma = sigma, seed = seed, ell = settings$ell,
+      rejections = rejections, rejection_rate = rate,
+      mc_se = sqrt(rate * (1 - rate) / M),
+      lower_95 = unname(interval[1L]), upper_95 = unname(interval[2L]))
+  }
+  summary <- do.call(rbind, summaries)
+  result <- list(settings = settings, scenarios = scenarios, raw = raw,
+                 summary = summary, elapsed_seconds =
+                   as.numeric(difftime(Sys.time(), start, units = "secs")),
+                 session_info = sessionInfo())
+  write.csv(summary, summary_file, row.names = FALSE)
+  saveRDS(result, raw_file, version = 3)
+  message(sprintf("Saved %d replications, %d bootstrap tests, and %d summary rows.",
+                  nrow(raw), nrow(raw) * 3L, nrow(summary)))
+  invisible(result)
+}
+```
+
+If `recompute_simulation` is `false`, completed scenario results from an
+earlier run are reused only after the simulation engine has verified
+that all their settings match the current design; otherwise every
+scenario is computed afresh. Because each simulated dataset has its own
+fixed seed, both routes give identical results.
+
+```{r run-simulation, message=TRUE}
+checkpoint_dir <- file.path("work", "simulation")
+if (!params$recompute_simulation) {
+  original_checkpoints <- list.files(
+    file.path(project_root, "work", "simulation"),
+    pattern = "^config_[0-9]{2}\\.rds$", full.names = TRUE
+  )
+  for (original in original_checkpoints) {
+    target <- file.path(checkpoint_dir, basename(original))
+    if (!file.exists(target)) {
+      copied <- file.copy(original, target, overwrite = FALSE)
+      if (!copied) stop("Could not copy a simulation checkpoint: ", original)
+    }
+  }
+}
+sigma <- sqrt(fast$RSS1 / (n - 3L))
+simulation <- run_simulation(
+  M = simulation_M, B = simulation_B, n = n,
+  sigma = sigma, seed = master_seed, workers = workers,
+  checkpoint_dir = checkpoint_dir,
+  summary_file = "tables/simulation_summary.csv",
+  raw_file = "work/simulation/simulation_results.rds",
+  resume = !params$recompute_simulation
+)
+sim <- simulation$summary
+knitr::kable(simulation$scenarios, caption = "Eight Monte Carlo configurations")
+cat("Calibrated innovation scale:", sigma, "degrees C\n")
+cat("Datasets:", nrow(simulation$raw),
+    "; bootstrap tests:", 3L * nrow(simulation$raw),
+    "; bootstrap samples:", 3L * nrow(simulation$raw) * simulation_B, "\n")
+```
+
+## Rejection frequencies and their interpretation
+
+A well-calibrated nominal 5% test should reject approximately 5% of
+no-break datasets. Power must be interpreted alongside size: a method
+that rejects too often under the null can have misleadingly high
+apparent power.
+
+```{r simulation-results-table}
+method_names <- c(iid = "IID residual", wild = "Independent wild", dwb = "Dependent wild")
+simulation_comparison <- do.call(rbind, lapply(unique(sim$config), function(config) {
+  z <- sim[sim$config == config, ]
+  rates <- vapply(c("iid", "wild", "dwb"), function(method) {
+    100 * z$rejection_rate[z$method == method]
+  }, numeric(1L))
+  data.frame(
+    Configuration = config, Quantity = ifelse(z$delta[1] == 0, "Size", "Power"),
+    Change = z$delta[1], Rho = z$rho[1],
+    Innovation_scale = ifelse(z$heteroskedastic[1], "Increasing", "Constant"),
+    IID_residual_percent = rates[1], Independent_wild_percent = rates[2],
+    Dependent_wild_percent = rates[3], row.names = NULL
+  )
+}))
+knitr::kable(simulation_comparison, digits = 1, caption = "Rejection frequencies (%)")
+```
+
+With independent, constant-variance errors, IID residual and independent
+wild tests have sizes 4.1% and 4.3%. Under independence and increasing
+variance, IID residual size rises to 8.8%, while independent wild
+remains near nominal at 5.4%.
+
+Serial correlation has a larger effect. At $\rho=0.4$, the independent
+procedures reject 26.5–32.2% of no-break datasets across the scale
+designs. Their resampling schemes remove the serial dependence affecting
+the observed search statistic, making the simulated critical values too
+small in these settings.
+
+DWB null rejection rates are 2.1–3.5%. It avoids over-rejection here but
+is conservative relative to 5%, rather than exactly calibrated. Its
+power is 98.5–99.0% under independence and 74.6–78.5% with
+autocorrelation. Higher apparent power from the independent methods
+under serial correlation should not be read as superior performance
+because their null sizes are distorted. Size-adjusted power is not
+calculated.
+
+```{r simulation-results-plot, fig.cap="Size and power; vertical lines are Wilson intervals for simulation frequencies."}
+plot_pair("simulation_results", function() {
+    par(mfrow = c(1, 2), mar = c(5.2, 4.4, 2.4, 0.8), mgp = c(2.7, 0.7, 0), las = 1,
+        col.axis = axis_colour, col.lab = label_colour,
+        col.main = label_colour, cex = 0.8)
+    cols <- c(gray, navy, teal)
+    for (estimand in c("size", "power")) {
+        z <- sim[sim$estimand == estimand, ]
+        ks <- unique(z$config)
+        ylim <- if (estimand == "size") 
+            c(0, 40)
+        else c(60, 103)
+        plot(1, 1, type = "n", xlim = c(0.6, 4.4), ylim = ylim, xaxt = "n", xlab = "", ylab = "Rejection frequency (%)", 
+            main = ifelse(estimand == "size", "Null rejection (nominal 5%)", "Power (change 0.14 degrees C/decade)"))
+        axis(1, at = 1:4, labels = c("Independent\nconstant", "AR(0.4)\nconstant", "Independent\nincreasing", 
+            "AR(0.4)\nincreasing"), tick = FALSE, cex.axis = 0.8)
+        if (estimand == "size") 
+            abline(h = 5, lty = 3, col = gray)
+        for (j in 1:3) {
+            zz <- z[z$method == c("iid", "wild", "dwb")[j], ]
+            xx <- (1:4) + (j - 2) * 0.1
+            lines(xx, 100 * zz$rejection_rate, type = "b", pch = 15 + j, col = cols[j], lwd = 1.4)
+            segments(xx, 100 * zz$lower_95, xx, 100 * zz$upper_95, col = cols[j])
+        }
+        if (estimand == "size") 
+            legend("topleft", c("IID residual", "Independent wild", "Dependent wild"), col = cols, 
+                pch = 16:18, lty = 1, bty = "n", cex = 0.8)
+    }
+}, 10, 4.6)
+
+knitr::include_graphics(file.path(artifact_root, "figures/simulation_results.png"))
+
+```
+
+```{r simulation-uncertainty-table}
+uncertainty_table <- data.frame(
+  Configuration = sim$config, Quantity = sim$estimand,
+  Procedure = unname(method_names[sim$method]), Rejections = sim$rejections,
+  Frequency_percent = 100 * sim$rejection_rate,
+  MC_SE_percentage_points = 100 * sim$mc_se,
+  Wilson_lower_percent = 100 * sim$lower_95,
+  Wilson_upper_percent = 100 * sim$upper_95
+)
+knitr::kable(uncertainty_table, digits = 2,
+             caption = "Monte Carlo uncertainty for all 24 procedure–scenario combinations")
+```
+
+The simulation supports retaining dependence in station inference, but
+it does not prove that the empirical DWB p-value is conservative. It
+covers Gaussian innovations, one sample size, one reasonably strong
+central kink and one DWB bandwidth. It does not evaluate missingness,
+weak or multiple breaks, alternative dependence models or
+confidence-interval coverage. Those limits temper direct transfer to the
+irregular empirical record.
+
+# Conclusion
+
+The Geneva record from 1753 to 2013 shows a positive average linear
+trend of `r fmt(beta1_hat, 4)` °C per decade, but a single straight line
+is not an adequate description of it. The residuals of the linear model
+are positively autocorrelated (Monte Carlo Durbin–Watson p =
+`r fmt(p_val_dw)`), while there is no evidence of a trend in the
+residual variance (Breusch–Pagan p = `r fmt(p_val_bp)`). Part of this
+dependence reflects low-frequency movements that one slope cannot
+capture.
+
+A continuous broken trend fits best with a kink at `r year[k]` and
+reduces the residual sum of squares by
+`r fmt(100 * Fobs / sum(e0^2), 2)`%. It describes the record as a
+slightly declining trend before the break (`r fmt(coef(m1)[2])` °C per
+decade) followed by warming of `r fmt(sum(coef(m1)[2:3]))` °C per
+decade. The selected year coincides with the coldest year in the record,
+but excluding that year or the post-gap observations leaves the kink in
+the mid-nineteenth century, a timing consistent with the end of the
+Little Ice Age in the Alps.
+
+The evidence that the trend actually changed is
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05) "moderate" else "weak"`.
+The primary dependent wild bootstrap
+`r if (btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6] <= 0.05) "rejects" else "does not reject"`
+the no-break null at the 5% level (p =
+`r fmt(btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 6])`),
+but its p-value rises with the bandwidth to
+`r fmt(btests$p_value[btests$method == "dwb" & !is.na(btests$ell) & btests$ell == 12])`
+at $\ell=12$. Bootstrap procedures that ignore serial dependence reject
+much more strongly, but their p-values are not credible given the
+Section 3 diagnostics. Conditional on the broken-trend model,
+`r if (all(cis$lower[cis$parameter == "pre"] <= 0 & cis$upper[cis$parameter == "pre"] >= 0)) "the pre-break slope is not distinguishable from zero" else "the pre-break slope differs from zero"`,
+while
+`r if (all(cis$lower[cis$parameter == "post"] > 0)) "the post-break slope is positive under both interval types" else "the post-break slope is not clearly positive"`.
+
+The simulation study shows that independent-error bootstraps over-reject
+substantially when errors are autocorrelated, whereas the DWB keeps size
+at or below the nominal level at the cost of lower power. This supports
+the choice of the DWB for this station, although it does not prove that
+the empirical DWB p-value is conservative.
+
+In answer to the research question, the Geneva record indicates warming
+since the mid-nineteenth century of about
+`r fmt(10 * sum(coef(m1)[2:3]), 2)` °C per century; a single linear
+trend understates this warming by averaging it with an earlier cooler
+phase; and there is moderate, bandwidth-sensitive statistical evidence
+for a change in the trend. The main limitations are the missing years
+1981–2009, station history beyond what homogenisation corrects, the
+restriction to a single break and a single dependence model, and the
+absence of a coverage study for the confidence intervals.
+
+# Appendix A: Computational validation {.unnumbered}
+
+The checks below are executable rather than asserted. They compare the
+optimised break search with brute-force OLS, reconstruct both interval
+types from the stored bootstrap draws, verify the finite-replication
+p-value corrections, reconstruct every simulation rejection frequency
+and Wilson interval, and replay one complete dataset from each of the
+eight simulation scenarios. All functions used are defined in this
+document, and the checks write only to its working folder.
+
+## A.1 Section 3 computations {.unnumbered}
+
+These checks verify that the 1850 centring and mean-year centring give
+identical fitted lines and slopes, that the complete supplied sample is
+retained, that an independent QR projection reproduces all 9,999 draws
+for both DW definitions, and that the BP statistic agrees with its
+one-regressor squared-correlation identity.
+
+```{r part1-independent-checks}
+original_data <- read.csv(file.path(project_root, "Station08.csv"))
+stopifnot(identical(dat$Year, original_data$Year),
+          identical(dat$Temperature, original_data$Temperature),
+          n == 226L, length(missing_years) == 35L, nrow(gap_table) == 5L)
+centered_model <- lm(Temperature ~ I((Year - mean(Year)) / 10), data = dat)
+stopifnot(max(abs(fitted(centered_model) - fitted(trend_model))) < 1e-10,
+          abs(coef(centered_model)[2] - beta1_hat) < 1e-12,
+          abs(coef(centered_model)[1] + beta1_hat * (1850 - mean(dat$Year)) / 10 - beta0_hat) < 1e-12)
+
+set.seed(master_seed)
+Z_check <- matrix(rnorm(n * B), nrow = n)
+Q_check <- qr.Q(qr(model.matrix(trend_model)))
+E_check <- Z_check - Q_check %*% crossprod(Q_check, Z_check)
+dw_replayed <- colSums((E_check[-1, , drop = FALSE] -
+                        E_check[-n, , drop = FALSE])^2) / colSums(E_check^2)
+dw_gap_replayed <- colSums((E_check[valid_pairs + 1L, , drop = FALSE] -
+                            E_check[valid_pairs, , drop = FALSE])^2) / colSums(E_check^2)
+stopifnot(max(abs(dw_replayed - d_sim)) < 1e-10,
+          max(abs(dw_gap_replayed - d_sim_gap)) < 1e-10,
+          abs(n * cor(dat$residual_sq, dat$t)^2 - BP_stat) < 1e-12)
+part1_checks <- c(
+  "PASS: all supplied rows, five gaps and 35 missing years are retained",
+  "PASS: year-1850 and mean-year parameterizations have identical fitted lines and slopes",
+  "PASS: independent QR projection reproduces both 9,999-draw DW reference distributions",
+  "PASS: BP agrees with the one-regressor squared-correlation identity"
+)
+write_csv(dw_results, "tables/dw_comparison.csv")
+writeLines(part1_checks, "outputs/part1_validation.txt")
+cat(paste(part1_checks, collapse = "\n"), "\n")
+```
+
+## A.2 Break search, intervals and simulation {.unnumbered}
+
+```{r independent-validation}
+checks <- character()
+pass <- function(text) {
+  checks <<- c(checks, paste("PASS:", text))
+  cat(tail(checks, 1L), "\n")
+}
+station <- read.csv(file.path(project_root, "Station08.csv"))
+stopifnot(nrow(station) == 226L, !anyNA(station),
+          !anyDuplicated(station$Year), all(diff(station$Year) > 0))
+y <- station$Temperature
+D <- prepare_design(station$Year)
+fitted_break <- fit_break(y, D)
+x <- D$x
+rss_grid <- sapply(D$index, function(k)
+  deviance(lm(y ~ x + I(pmax(0, x - x[k])))))
+rss_null <- deviance(lm(y ~ x))
+stopifnot(abs(fitted_break$F - (rss_null - min(rss_grid))) < 1e-9,
+          fitted_break$index == D$index[which.min(rss_grid)],
+          max(abs(fitted_break$fitted - fitted(lm(y ~ x +
+            I(pmax(0, x - x[fitted_break$index])))))) < 1e-9)
+pass("optimized break search agrees with independent brute-force OLS and fitted values")
+
+set.seed(320926)
+for (method in c("iid", "wild", "dwb")) {
+  errors <- bootstrap_errors(fitted_break$null_residuals, D$year, 7L, method, 6, 2)
+  projected <- break_statistics(errors, D)$F
+  brute <- vapply(seq_len(ncol(errors)), function(b) {
+    ystar <- fitted_break$null_fitted + errors[, b]
+    rss0 <- deviance(lm(ystar ~ x))
+    rss1 <- min(sapply(D$index, function(k)
+      deviance(lm(ystar ~ x + I(pmax(0, x - x[k]))))))
+    rss0 - rss1
+  }, numeric(1L))
+  stopifnot(max(abs(projected - brute)) < 1e-8)
+}
+pass("all 21 bootstrap checks reproduce full null-generated-series OLS statistics")
+
+ci <- read.csv("tables/confidence_intervals.csv")
+ci_draws <- read.csv("tables/ci_draws.csv")
+stopifnot(nrow(ci_draws) == 4999L, nrow(ci) == 4L, !anyNA(ci_draws),
+          all(ci$B == 4999L), all(ci$lower <= ci$upper),
+          all(ci_draws$year %in% D$year[D$index]))
+for (parameter in c("pre", "post")) {
+  pc <- ci[ci$parameter == parameter & ci$type == "percentile", ]
+  pt <- ci[ci$parameter == parameter & ci$type == "percentile_t", ]
+  draws <- ci_draws[[parameter]]
+  ses <- ci_draws[[paste0("se_", parameter)]]
+  stopifnot(all(ses > 0), all(is.finite(ses)))
+  percentile <- quantile(draws, c(.025, .975), type = 7, names = FALSE)
+  tstar <- (draws - pt$estimate) / ses
+  studentized <- pt$estimate - pt$hac_se *
+    quantile(tstar, c(.975, .025), type = 7, names = FALSE)
+  stopifnot(max(abs(percentile - c(pc$lower, pc$upper))) < 1e-10,
+            max(abs(studentized - c(pt$lower, pt$upper))) < 1e-10)
+}
+pass("percentile and percentile-t intervals recompute from all 4,999 stored refits")
+
+bt <- read.csv("tables/bootstrap_tests.csv")
+stopifnot(nrow(bt) == 5L, all(bt$B == 9999L),
+          all(abs(bt$statistic - fitted_break$F) < 1e-8),
+          all(abs(bt$p_value - (1 + bt$exceedances) / (bt$B + 1)) < 1e-12))
+pass("all reported empirical p-values follow the finite-replication correction")
+
+simulation <- readRDS("work/simulation/simulation_results.rds")
+raw <- simulation$raw
+summary <- read.csv("tables/simulation_summary.csv")
+stopifnot(nrow(raw) == 8000L, nrow(summary) == 24L, !anyNA(raw),
+          all(table(raw$config) == 1000L), all(summary$M == 1000L),
+          all(summary$B == 499L), all(summary$n == 226L),
+          abs(simulation$settings$sigma - sqrt(fitted_break$RSS1 / 223)) < 1e-12)
+for (s in seq_len(8L)) {
+  one <- raw[raw$config == s, ]
+  stopifnot(identical(sort(as.integer(one$replication)), seq_len(1000L)),
+            all(one$replicate_seed == 20260926L + s * 100000L + one$replication))
+  for (method in c("iid", "wild", "dwb")) {
+    values <- one[[paste0(method, "_p")]]
+    stopifnot(all(values >= 1 / 500 & values <= 1),
+              all(abs(500 * values - round(500 * values)) < 1e-8))
+    row <- summary[summary$config == s & summary$method == method, ]
+    count <- sum(values <= .05)
+    rate <- count / 1000
+    interval <- wilson_interval(count, 1000)
+    stopifnot(row$rejections == count, abs(row$rejection_rate - rate) < 1e-12,
+      abs(row$mc_se - sqrt(rate * (1 - rate) / 1000)) < 1e-12,
+      max(abs(c(row$lower_95, row$upper_95) - interval)) < 1e-12)
+  }
+}
+pass("all 8,000 replications, 24 rejection rates, MC standard errors and Wilson intervals are consistent")
+
+# Replay one observation from every scenario, independently of worker scheduling.
+Ds <- prepare_design(seq_len(226L))
+for (s in seq_len(8L)) {
+  row <- raw[raw$config == s & raw$replication == 1000L, ]
+  set.seed(row$replicate_seed)
+  ys <- simulate_broken_trend(Ds, row$delta, row$rho, row$heteroskedastic,
+                              simulation$settings$sigma)
+  result <- bootstrap_break(ys, Ds, B = 499L)
+  stopifnot(abs(result$observed$F - row$F) < 1e-10)
+  for (method in c("iid", "wild", "dwb"))
+    stopifnot(abs(result$results[[method]]$p_value - row[[paste0(method, "_p")]]) < 1e-12)
+}
+pass("recorded seeds reproduce one complete replication from every simulation scenario")
+writeLines(checks, "outputs/validation.txt")
+cat("All checks passed. Saved outputs/validation.txt.\n")
+```
+
+# Appendix B: Random seeds and session information {.unnumbered}
+
+The Section 3 Monte Carlo test and its replay in Appendix A use seed
+`r master_seed`. The empirical IID residual, independent wild and
+primary DWB tests use the master seed `20260926` plus 101, 102 and 103.
+The bandwidth checks use the master seed plus 203 and 212, and the slope
+intervals use the master seed plus 301. Simulation dataset $m$ in
+scenario $c$ uses `20260926 + 100000*c + m`, independently of worker
+scheduling.
+
+```{r session-record}
+capture.output(sessionInfo(), file = "outputs/sessionInfo.txt")
+sessionInfo()
+```
+
+# Appendix C: Choice of reference year {.unnumbered}
+
+The time index is $t=(\mathrm{Year}-1850)/10$; the division by ten
+reports slopes per decade. The reference year 1850 was chosen because it
+lies next to the estimated break date. The intercept of the linear model
+is then the fitted temperature in 1850, and, since the estimated break
+(`r year[k]`) does not precede 1850, the intercept of the broken-trend
+model is also its fitted temperature in 1850. The two intercepts are
+thus directly comparable at 1850. The fitted level at the estimated
+turning point is instead $\widehat\alpha+\widehat\beta(\widehat T_1-1850)/10$.
+
+Any other reference year, such as the sample mean, would change only the
+intercept. Fitted values, residuals, slopes, the RSS, the break search
+and all test statistics are invariant, as verified in Appendix A.1.
+Centring at the sample mean would minimise the classical OLS variance of
+the intercept, but no inference in this report concerns the intercept.
+Because 1850 was chosen with knowledge of the Section 4 estimate, the
+choice is purely presentational; although 1850 is also a common
+pre-industrial reference year in climate assessments, it is not used
+here in that sense.
+
+# Appendix D: Effect of data gaps on the analysis {.unnumbered}
+
+| Component | Effect of gaps | Approach retained or refined |
+|------------------------|------------------------|------------------------|
+| Exploratory and residual time plots | Observed lines must not imply data inside gaps | Lines are grouped by contiguous years; the largest gap is shaded |
+| OLS estimates | Calendar spacing is represented, but coverage and missingness can matter | Retain $(\mathrm{Year}-1850)/10$ and the complete supplied sample |
+| Residual ACF | Observation lags and calendar lags differ | Display both; calendar grid contains `NA` for absent years |
+| Variance smooth | Its curve inside a gap is unsupported by observations there | Retain the descriptive smooth with an explicit limitation |
+| QQ plot | Time order is absent from its construction | Treat it as a marginal descriptive comparison, not proof of Gaussianity |
+| DW statistic and Monte Carlo | The specified formula uses observation adjacency | Primary specified statistic plus separately calibrated calendar-adjacent sensitivity |
+| BP test | Algebra uses actual time; dependence qualifies its reference | Retain $nR^2$ and nominal $\chi^2_1$, with cautious non-rejection language |
+| Section 4 bootstrap | Dependence should use actual calendar gaps | DWB multipliers depend on elapsed years; every sample repeats the date search |
+| Overall interpretation | Missing decades and metadata limit conclusions | No inference about an unobserved trajectory, global change or physical cause |
