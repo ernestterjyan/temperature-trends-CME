@@ -8,6 +8,7 @@
 \usepackage[hidelinks]{hyperref}
 \definecolor{navy}{HTML}{174A6E}
 \usepackage{titlesec}
+\setcounter{tocdepth}{1}
 \titleformat{\section}{\large\bfseries\color{navy}}{\thesection}{.65em}{}
 \titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{.6em}{}
 \setlength{\parindent}{0pt}\setlength{\parskip}{5pt}
@@ -27,17 +28,41 @@
 \newcommand{\iid}{\mathrel{\mathop{\sim}\limits^{\mathrm{iid}}}}
 \input{tables/numbers.tex}
 \begin{document}
-\begin{titlepage}\thispagestyle{empty}\vspace*{20mm}
-{\color{navy}\LARGE\bfseries Temperature trends at Station08\par}
-\vspace{6mm}{\Large Linear trends, structural change, and bootstrap inference\par}
-\vspace{12mm}{\large Computational Methods in Econometrics\par}
-Vrije Universiteit Amsterdam\par Academic year 2026--2027\par
-\vspace{12mm}\textbf{Data:} Station08.csv, \FirstYear--\LastYear, \Nobs\ observed years\par
-\textbf{Analysis date:} 28 September 2026\par
-\vspace{12mm}\textbf{Abstract}\par
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{6mm}
+{\small\textsc{Vrije Universiteit Amsterdam}\par}
+{\small Computational Methods in Econometrics\par}
+{\small Academic year 2026--2027\par}
+\vspace{5mm}
+{\color{navy}\rule{\linewidth}{0.7pt}\par}
+\vspace{12mm}
+{\color{navy}\fontsize{25}{30}\selectfont\bfseries
+Temperature trends at Station08\par}
+\vspace{4mm}
+{\large Linear trends, structural change,\par
+and bootstrap inference\par}
+\vspace{12mm}
+{\small\bfseries Group members (student numbers)\par}
+\vspace{2mm}
+Bobo Wen \quad 15324540\par
+Ernest Terjyan \quad 2807371\par
+Trân Thái Bao \quad 2836316\par
+Santonio Pham \quad 2907162\par
+\vspace{8mm}
+{\small\textbf{Data:} Station08.csv, \FirstYear--\LastYear, \Nobs\ observed years\par}
+\vspace{8mm}
+\textbf{Abstract}\par
 This study examines the annual temperature record of Geneva, Switzerland, supplied as Station08. A single linear trend rises by 0.0337\,\degC\ per decade, but its residuals show substantial dependence. A continuous broken trend fits best at 1851 and lowers the residual sum of squares by 12.5\%. Its slopes are $-0.0525$ and $0.0887$\,\degC\ per decade before and after that date. A calendar-aware dependent wild bootstrap gives a break-test $p$-value of 0.0331; increasing the dependence bandwidth changes it to 0.0541. Both bootstrap interval constructions include zero for the pre-break slope and exclude it for the post-break slope. An 8,000-dataset simulation finds severe over-rejection by independent-error bootstrap methods under serial correlation, while the dependent wild procedure is conservative. The evidence supports a rising later trend and a useful change in fitted slope, with qualified evidence about an unknown structural break. Missing years, incomplete measurement-history information and the single-break specification limit interpretation.
-\vfill\small All estimates, figures and simulation results follow the refined \texttt{main.Rmd}. The report retains all 226 supplied observations and uses the supplied station metadata. The data source is the quality-controlled, homogenisation-adjusted GHCN-M v4 Geneva series.
-\end{titlepage}\pagenumbering{arabic}
+\vfill
+{\small All estimates, figures and simulation results follow the refined \texttt{main.Rmd}.\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\thispagestyle{plain}
+\clearpage
+\pagenumbering{arabic}
 
 \section{Introduction and research question}
 Does the record at Station08 reveal sustained warming, and does a constant linear trend adequately describe its evolution? A positive fitted slope alone cannot answer this question. Annual temperatures fluctuate, residual dependence changes the uncertainty of trend estimates, and a single slope may average over different historical patterns. We begin with a descriptive linear fit, assess its residuals, and compare it with a continuous model whose slope changes at an unknown date. A simulation study evaluates the inferential procedures under known data-generating processes.
@@ -64,7 +89,7 @@ Last observed year & Next observed year & Missing interval & Missing years\\\mid
 Observation adjacency therefore differs from calendar adjacency. In particular, 1980 and 2010 are 30 years apart. Observed-data lines stop across gaps; fitted curves and variance smooths inside them are model-implied, not observations. The four final values cannot show whether warming during the missing decades was gradual, accelerating or interrupted, and their difference from 1980 is not evidence of a discontinuity.
 
 \subsection{Exploratory features and time index}
-The sample mean is \YMean\,\degC\ and its standard deviation is \YSd\,\degC. The coldest observation is \YMin\,\degC\ in 1851 and the warmest is \YMax\,\degC\ in 2011. Means are 9.49\,\degC\ before 1800, 9.20 in 1800--1849, 9.26 in 1850--1899 and 9.79 in 1900--1980. All four observations in 2010--2013 are among the twelve warmest. The record drifts downward into the mid-nineteenth century and rises thereafter (Figure~\ref{fig:series}); this motivates examining a changing slope.
+The sample mean is \YMean\,\degC\ and its standard deviation is \YSd\,\degC. The coldest observation is \YMin\,\degC\ in 1851 and the warmest is \YMax\,\degC\ in 2011. Means are 9.49\,\degC\ before 1800, 9.20 in 1800--1849, 9.26 in 1850--1899 and 9.79 in 1900--1980. All four observations in 2010--2013 are among the twelve warmest. The record drifts downward into the mid-nineteenth century and rises thereafter (Figure~\ref{fig:exploratory-series}). This exploratory pattern motivates asking whether a constant linear trend adequately describes the full record.
 
 Year-to-year variation is substantial relative to this slow movement. The raw standard deviation is 0.665\,\degC\ before 1900 and 0.610\,\degC\ thereafter. These measures include within-period trend movements, so they are descriptive rather than tests of changing error variance. No extreme observation is removed; the role of the coldest year is examined separately.
 
@@ -74,8 +99,8 @@ We distinguish observation position $i=1,\ldots,n$ from calendar year $s_i$ and 
 \end{equation}
 One unit is one decade, so slopes have units \degC\ per decade. Calendar spacing enters the regression even when years are missing. Centring at 1850 changes the intercept but leaves fitted values, residuals, slopes and test statistics unchanged. This reference year was chosen for presentation after seeing the estimated break near 1850; it carries no inferential weight. Appendix~\ref{app:centring} explains the intercept interpretation. Trimming operates on observation positions, as specified in the assignment.
 
-\begin{figure}[htbp]\centering\includegraphics[width=.96\linewidth]{temperature_fits.pdf}
-\caption{Observed annual temperatures and fitted models using all 226 observations. Observation lines stop across missing years. The shaded interval contains no observations; fitted curves across it are model-implied. The vertical line marks the best-fitting break at 1851.}\label{fig:series}\end{figure}
+\begin{figure}[htbp]\centering\includegraphics[width=.96\linewidth]{exploratory_series.pdf}
+\caption{Observed annual temperatures at Station08. Points show all 226 supplied observations. Lines connect consecutive observed calendar years only and stop at gaps. The shaded interval marks 1981--2009, for which no observations are supplied. No fitted model is shown; the figure is purely exploratory.}\label{fig:exploratory-series}\end{figure}
 
 \section{Linear trend and model diagnostics}
 \subsection{Estimation and residual plots}
@@ -128,16 +153,25 @@ For candidate observation $k$, define $h_{ik}=(x_i-x_k)_+$ and estimate
 \begin{equation}y_i=\alpha+\beta x_i+\delta h_{ik}+\varepsilon_i.\label{eq:broken}\end{equation}
 The pre-break slope is $\beta$, and the post-break slope is $\beta+\delta$. The hinge is zero at the break, enforcing continuity. Thus the model allows a slope change without an instantaneous level jump. At fixed $k$, the three regressors are known and OLS applies directly.
 
-With 15\% trimming, the integer candidate set is $k=\lceil.15n\rceil,\ldots,\lfloor.85n\rfloor=34,\ldots,192$, corresponding to 1786--1945. Trimming protects against fits based on too few observations in a regime \cite{andrews}. We trim observation counts, not calendar duration: trimming 15\% of the calendar span could leave as few as eight observed years after a candidate because of the long gap. We fit every candidate, and minimum RSS selects $\widehat k=99$, or \BreakYear. Figure~\ref{fig:profile} displays the complete objective profile. The fitted equation is
+With 15\% trimming, the integer candidate set is $k=\lceil.15n\rceil,\ldots,\lfloor.85n\rfloor=34,\ldots,192$, corresponding to 1786--1945. Trimming protects against fits based on too few observations in a regime \cite{andrews}. We trim observation counts, not calendar duration: trimming 15\% of the calendar span could leave as few as eight observed years after a candidate because of the long gap. We fit every candidate, and minimum RSS selects $\widehat k=99$, or \BreakYear. The fitted equation is
 \begin{equation}\widehat y_i=\BrokenIntercept\;\PreSlope x_i+\DeltaSlope(x_i-x_{99})_+.\end{equation}
-The negative coefficient multiplying $x_i$ is the pre-break slope. The hinge is zero in 1850, so the intercept is fitted temperature in 1850, directly comparable to the linear intercept. It is not the fitted temperature at the break in 1851; that value is $\widehat\alpha+0.1\widehat\beta$. RSS falls from 97.447 to 85.237, giving
+The negative coefficient multiplying $x_i$ is the pre-break slope. The hinge is zero in 1850, so the intercept is fitted temperature in 1850, directly comparable to the linear intercept. It is not the fitted temperature at the break in 1851; that value is $\widehat\alpha+0.1\widehat\beta$.
+
+Figure~\ref{fig:model-comparison} compares the selected continuous broken trend with the constant linear trend. The selected model captures the broad decline into the mid-nineteenth century followed by a later increase. At this stage, 1851 is the RSS-minimizing point estimate from the model search; bootstrap inference below assesses whether the associated improvement in fit is unusual under the no-break null.
+
+\begin{figure}[H]\centering\includegraphics[width=.96\linewidth]{temperature_fits.pdf}
+\caption{Observed annual temperatures with the fitted constant linear trend and the selected continuous broken trend, using all 226 observations. Observation lines stop across missing years, while fitted curves across the shaded interval are model-implied. The vertical line marks the RSS-minimizing candidate change point at 1851.}\label{fig:model-comparison}\end{figure}
+
+RSS falls from 97.447 to 85.237, giving
 \begin{equation}F_T=RSS_0-\min_kRSS(k)=\BreakStat\quad(\degC^2).\end{equation}
 Despite its label, $F_T$ is the handout's raw RSS reduction, not a variance-normalized $F$ ratio. The alternative is $\delta\neq0$ at some admissible date. The date is unidentified under $H_0:\delta=0$, and searching improves fit even in no-break data. Ordinary fixed-date tests do not calibrate this selection.
 
 The selected year also contains the coldest observation. A continuous hinge describes a trough-shaped mean and can be attracted toward a pronounced local minimum; the sensitivity check therefore repeats the search without 1851. A mid-nineteenth-century turning point is consistent with conventional dating of the end of the Little Ice Age in the European Alps, where many glaciers reached their last maxima around 1850 \cite{matthews}. This agreement is suggestive only: one station and a fitted breakpoint cannot establish a regional transition or a cause.
 
-\begin{figure}[htbp]\centering\includegraphics[width=.86\linewidth]{break_profile.pdf}
-\caption{RSS over the trimmed candidate set. Its minimum identifies the best-fitting date; bootstrap inference determines whether the reduction is unusual under the no-break null.}\label{fig:profile}\end{figure}
+Figure~\ref{fig:rss-profile} shows the complete objective profile over the trimmed candidate set. Its minimum determines the selected date, while the bootstrap analysis in the next subsection determines whether the resulting reduction in RSS is unusually large under the no-break null.
+
+\begin{figure}[H]\centering\includegraphics[width=.86\linewidth]{break_profile.pdf}
+\caption{RSS over the trimmed candidate set. Its minimum identifies the selected change-point estimate; bootstrap inference determines whether the reduction is unusual under the no-break null.}\label{fig:rss-profile}\end{figure}
 
 \subsection{Bootstrap choices and complete testing algorithms}
 The primary method is a dependent wild bootstrap (DWB) with Gaussian autoregressive multipliers evaluated at calendar gaps. It retains residual variance patterns while approximating short-range dependence. Dependent wild and autoregressive wild methods provide precedents for dependent, irregularly observed trend data \cite{shao,friedrich}. These motivate the construction but do not establish an exact guarantee for this particular unknown-break statistic. The simulation below evaluates finite-sample behavior in specified settings.
@@ -146,7 +180,7 @@ The diagnostics motivate preserving dependence: the primary DW p-value is 0.0002
 
 \textbf{Restricted residuals and bandwidth.} Testing samples are generated around the fitted null mean using restricted residuals. This targets $H_0$ but does not guarantee accurate finite-sample size. If the trend changes, restricted residuals may contain the unmodelled kink as low-frequency structure. Retaining more of that structure at longer bandwidths may raise critical values and reduce power, but p-values need not increase monotonically with bandwidth. Using broken-trend residuals while still generating around the null mean would change the calibration; its size and power effects would need a separate study.
 
-The primary $\ell=6$ follows the $n^{1/3}$ rate. Its multiplier correlations are $\exp(-1/6)\approx0.85$ at one year, 0.37 at six years and 0.14 at twelve years. These are kernel correlations, not estimates of the residual ACF. Bandwidths three and twelve assess sensitivity to the retained dependence horizon.
+The primary $\ell=6$ follows the $n^{1/3}$ rate. Its multiplier correlations are $\exp(-1/6)\approx0.85$ at one year, 0.37 at six years and 0.14 at twelve years. These are kernel correlations, not estimates of the residual ACF. Bandwidths two through fifteen assess sensitivity to the retained dependence horizon; three and twelve are also shown in the procedure-comparison table.
 
 For every method, the complete testing algorithm is:
 \begin{enumerate}
@@ -166,6 +200,12 @@ Table~\ref{tab:boot} reports the primary comparison and bandwidth sensitivity. D
 
 \begin{table}[htbp]\centering\small
 \caption{Unknown-break test. Each row uses $B=9,999$, observed $F_T=12.2106$, and critical values in \degC$^2$.}\label{tab:boot}\input{tables/bootstrap_table.tex}\end{table}
+
+
+Figure~\ref{fig:bandwidth-sensitivity} extends the DWB check to bandwidths two through fifteen, with the full break search in each draw. P-values range from 0.0116 to 0.0541: bandwidths two through eleven reject at 5\%, while twelve through fifteen do not. The curve is not strictly monotone. The primary six-year bandwidth is retained, rather than selected to minimize the p-value. Wilson intervals measure Monte Carlo uncertainty at each fixed bandwidth, not uncertainty about the bandwidth choice.
+
+\begin{figure}[!htbp]\centering\includegraphics[width=.94\linewidth]{bandwidth_sensitivity.pdf}
+\caption{Dependent wild bootstrap bandwidth sensitivity, using 9,999 draws per bandwidth. Points show corrected bootstrap p-values; vertical bars are 95\% Wilson intervals for conditional Monte Carlo tail probabilities. The dashed horizontal line marks 5\%, and the dotted vertical line marks the primary bandwidth of six calendar years.}\label{fig:bandwidth-sensitivity}\end{figure}
 
 Both independent-error methods give $p=0.0001$, with zero exceedances in 9,999 draws. This reflects finite simulation resolution, not a zero tail probability or a confidence bound on that probability. Both methods reject, but identical minimum p-values cannot establish that observation-specific variance is unimportant or resolve differences below this resolution. Their much smaller critical values are consistent with ignoring dependence. The simulation explains why these smaller $p$-values do not override the primary procedure.
 
@@ -236,7 +276,10 @@ The complete Station08 record has a positive overall linear slope, but residual 
 
 Evidence for a statistically identifiable structural break remains qualified: the primary DWB test rejects at 5\%, but a longer bandwidth does not. The date is therefore an uncertain feature of a fitted model rather than an established historical event. The simulation explains why ignoring dependence can exaggerate the evidence. The fitted later slope corresponds to about 0.89\,\degC\ per century; it is an average over the fitted later regime, not a recent-decade rate. The missing decades, measurement history beyond homogenisation, the single-break and dependence specifications, and untested interval coverage limit stronger climate interpretation.
 
-\clearpage\begin{thebibliography}{99}
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{References}
+\begin{thebibliography}{99}
 \bibitem{handout} Friedrich, M. (2026). \emph{Computational Methods in Econometrics: Investigating Temperature Trends: From Linear Trends to Structural Change}. Assignment handout, Vrije Universiteit Amsterdam. Supplied \texttt{CMEAssignment2026Handout.pdf} and \texttt{Station08.csv}.
 \bibitem{shao} Shao, X. (2010). The dependent wild bootstrap. \emph{Journal of the American Statistical Association}, 105(489), 218--235. \href{https://doi.org/10.1198/jasa.2009.tm08744}{doi:10.1198/jasa.2009.tm08744}.
 \bibitem{friedrich} Friedrich, M., Smeekes, S., and Urbain, J.-P. (2020). Autoregressive wild bootstrap inference for nonparametric trends. \emph{Journal of Econometrics}, 214(1), 81--109. \href{https://doi.org/10.1016/j.jeconom.2019.05.006}{doi:10.1016/j.jeconom.2019.05.006}.
@@ -288,7 +331,7 @@ The 2.5th and 97.5th date percentiles are 1793 and 1896; 1.54\% of selections ar
 \clearpage\section{Computational reproducibility and validation}\label{app:computation}
 The computational source for this report is the refined \texttt{main.Rmd}. It reads \texttt{Station08.csv} relative to its own directory, validates all supplied rows, and writes figures, tables, stored draws, simulation checkpoints and session details under \texttt{work/main\_rmd\_run}. Statistical estimation and resampling use base R and \texttt{parallel}; the document uses \texttt{ggplot2}, \texttt{knitr} and \texttt{rmarkdown}. \texttt{lmtest} supplies optional cross-checks, not the required test implementations. The report uses the Rmd's exported figures and numerical tables; no packaged unknown-break or complete bootstrap command substitutes for the implemented algorithms.
 
-The master seed is 20260926. DW and its QR-based replay use the master seed itself. IID, independent wild and primary DWB break tests use master $+101,+102,+103$; bandwidth checks use master $+203,+212$; CIs use master $+301$. Simulation dataset $m$ in scenario $c$ uses $20260926+100000c+m$, independently of worker scheduling. All reported replication counts were completed. Compatible saved simulation checkpoints avoid repeating an unchanged experiment; the Rmd parameter \texttt{recompute\_simulation = TRUE} requests recomputation.
+The master seed is 20260926. DW and its QR-based replay use the master seed itself. IID, independent wild and primary DWB break tests use master $+101,+102,+103$; the three- and twelve-year bandwidth checks use master $+203,+212$, while the additional grid bandwidths use master $+200$; CIs use master $+301$. Simulation dataset $m$ in scenario $c$ uses $20260926+100000c+m$, independently of worker scheduling. All reported replication counts were completed. Compatible saved simulation checkpoints avoid repeating an unchanged experiment; the Rmd parameter \texttt{recompute\_simulation = TRUE} requests recomputation.
 
 From the directory containing the refined Rmd and CSV, render with:
 \begin{quote}\small\ttfamily
@@ -333,5 +376,12 @@ Bootstrap inference & Dependence should reflect elapsed time. & DWB multiplier c
 Interpretation & Missing decades and measurement history remain unknown. & No claims about the unobserved trajectory, global change or a physical cause.\\\bottomrule
 \end{tabularx}
 \normalsize
+
+
+
+\section*{AI acknowledgement}
+\phantomsection
+\addcontentsline{toc}{section}{AI acknowledgement}
+AI tools, primarily Codex, were used to assist with debugging R code, translating text, and improving clarity, spelling. AI assistance also supported internal code documentation and progress notes tracking completed and outstanding tasks; these materials are not part of the submission.
 
 \end{document}

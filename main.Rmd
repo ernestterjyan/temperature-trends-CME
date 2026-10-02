@@ -189,6 +189,36 @@ dat$segment <- c(1, cumsum(diff(dat$Year) > 1) + 1)
 dat$t <- (dat$Year - 1850) / 10
 ```
 
+```{r expl-series-figure, fig.cap="Observed annual temperatures at Station08. Lines connect consecutive calendar years only; shading marks the 1981-2009 gap.", out.width="100%"}
+# Match the dimensions, font, margins and palette of the report's model-comparison plot.
+# Use the validated observations directly; no fitted models or change-point marker.
+draw_exploratory <- function() {
+  par(mar = c(4.2, 4.5, 1.5, 1), mgp = c(2.7, .7, 0), las = 1,
+      col.axis = axis_colour, col.lab = label_colour,
+      col.main = label_colour, cex = .95)
+  plot(dat$Year, dat$Temperature, type = "n",
+       xlab = "Calendar year", ylab = "Annual mean temperature (degrees C)",
+       ylim = c(7.3, 12))
+  rect(1980.5, 7.3, 2009.5, 12, col = gap_fill, border = NA)
+  for (ii in split(seq_len(nrow(dat)), dat$segment)) {
+    lines(dat$Year[ii], dat$Temperature[ii], col = gray_line, lwd = 1)
+  }
+  points(dat$Year, dat$Temperature, pch = 16, cex = 0.42, col = gray)
+  text(1995, 7.6, "No data", cex = 0.75, col = gray)
+}
+
+dir.create("figures", showWarnings = FALSE)
+pdf(file.path("figures", "exploratory_series.pdf"), width = 8, height = 4.8,
+    family = "Helvetica", useDingbats = FALSE)
+draw_exploratory()
+invisible(dev.off())
+png(file.path("figures", "exploratory_series.png"), width = 8 * 180,
+    height = 4.8 * 180, res = 180, type = "cairo")
+draw_exploratory()
+invisible(dev.off())
+
+knitr::include_graphics(file.path(artifact_root, "figures/exploratory_series.png"))
+```
 ## Exploratory analysis
 
 ```{r explore-plot, fig.width=8, fig.height=4.5, fig.cap="Annual mean temperature at Geneva, 1753–2013 (°C). Lines connect consecutive years only; the shaded band marks the 1981–2009 period without observations."}
@@ -1236,6 +1266,58 @@ write_csv(btests, "tables/bootstrap_tests.csv")
 
 ```
 
+```{r bandwidth-sensitivity}
+bandwidth <- btests[btests$method=="dwb",]
+for(ell in setdiff(2:15,bandwidth$ell))
+{
+  set.seed(seed+200L)
+  err<-bootstrap_errors(e0,year, B_test, "dwb", ell, df = 2)
+  fs <- break_statistics(err,design)$F
+  bandwidth <- rbind(bandwidth, data.frame(method = "dwb", ell = ell, B = B_test, statistic = Fobs, critical95=quantile(fs, .95, type = 1, names = FALSE), p_value = (1+sum(fs>=Fobs)) / (B_test + 1), exceedances = sum(fs >= Fobs)))
+}
+
+bandwidth <- bandwidth[order(bandwidth$ell),]
+
+#Wilson intervals 
+z<- qnorm(.975); tail_rate <- bandwidth$exceedances /B_test
+centre <- (tail_rate + z^2 / (2 * B_test)) / (1 + z^2 / B_test)
+half <- z * sqrt(tail_rate * (1 - tail_rate) / B_test +
+                 z^2 / (4 * B_test^2)) / (1 + z^2 / B_test)
+bandwidth$lower_95 <- pmax(0, centre - half)
+bandwidth$upper_95 <- pmin(1, centre + half)
+write_csv(bandwidth, "tables/bandwidth_sensitivity.csv")
+```
+
+
+```{r bandwidth-sensitivity-plot, fig.cap="Dependent wild bootstrap p-values over bandwidths 2–15 calendar years, with 9,999 draws at each bandwidth. Vertical bars are 95% Wilson intervals for conditional Monte Carlo tail probabilities; the dashed line marks the 5% threshold and the dotted line marks the primary bandwidth of six years.", out.width="100%"}
+plot_pair("bandwidth_sensitivity", function() {
+  setup()
+  plot(bandwidth$ell, bandwidth$p_value, type = "b", pch = 16,
+       col = navy, lwd = 1.5, xaxt = "n", ylim = c(0, 0.07),
+       xlab = "Bandwidth (calendar years)", ylab = "Bootstrap p-value")
+  axis(1, at = 2:15)
+  arrows(bandwidth$ell, bandwidth$lower_95,
+         bandwidth$ell, bandwidth$upper_95,
+         angle = 90, code = 3, length = 0.04, col = teal, lwd = 1.2)
+  abline(h = 0.05, lty = 2, col = rust)
+  abline(v = 6, lty = 3, col = gray_line)
+  points(bandwidth$ell, bandwidth$p_value, pch = 16, col = navy)
+  legend("bottomright", c("DWB p-value", "95% Monte Carlo interval", "5% threshold"),
+         col = c(navy, teal, rust), pch = c(16, NA, NA),
+         lty = c(1, 1, 2), bty = "n", cex = 0.8)
+}, width = 8, height = 3.2)
+knitr::include_graphics(file.path(artifact_root, "figures/bandwidth_sensitivity.png"))
+```
+
+The full bandwidth grid gives p-values from
+`r fmt(min(bandwidth$p_value))` to `r fmt(max(bandwidth$p_value))`.
+Bandwidths 2–11 reject at 5%, whereas 12–15 do not in this run;
+the curve need not be monotone. The primary bandwidth remains six years,
+rather than being selected to obtain the smallest p-value. This sensitivity
+qualifies the strength of the break evidence. The Wilson intervals describe
+Monte Carlo uncertainty in each fixed-bandwidth tail probability; they do
+not measure uncertainty about which bandwidth is appropriate.
+
 ```{r bootstrap-test-table}
 bootstrap_table <- btests
 bootstrap_table$Procedure <- c("IID residual", "Independent wild", "Dependent wild: ell=6",
@@ -2181,7 +2263,8 @@ cat("All checks passed. Saved outputs/validation.txt.\n")
 The Section 3 Monte Carlo test and its replay in Appendix A use seed
 `r master_seed`. The empirical IID residual, independent wild and
 primary DWB tests use the master seed `20260926` plus 101, 102 and 103.
-The bandwidth checks use the master seed plus 203 and 212, and the slope
+The bandwidth checks at three and twelve years use the master seed plus
+203 and 212; the additional grid bandwidths use master plus 200. The slope
 intervals use the master seed plus 301. Simulation dataset $m$ in
 scenario $c$ uses `20260926 + 100000*c + m`, independently of worker
 scheduling.
