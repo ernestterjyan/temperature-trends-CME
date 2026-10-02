@@ -2,6 +2,11 @@
 
 Course project for **Computational Methods in Econometrics** at Vrije Universiteit Amsterdam, using Station 08 annual mean temperature data for Geneva.
 
+- Bobo Wen
+- Ernest Terjyan
+- Trân Thái Bao
+- Santonio Pham
+
 ## Start here
 
 **[`main.Rmd`](main.Rmd) is the primary analysis file.** It covers **Parts I–III**: the linear trend and diagnostics, structural change and bootstrap inference, and a Monte Carlo simulation study. It combines explanations, executable code, results, plots and independent computational checks in one document.
