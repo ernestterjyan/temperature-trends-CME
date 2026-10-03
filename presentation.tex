@@ -1,11 +1,4 @@
-\documentclass[aspectratio=169,12pt]{beamer}
-% Compile from the repository root: make presentation
-% Ten main slides, with a suggested 600-second speaking plan in the notes.
-% Backup slides follow the conclusion and are outside that speaking plan.
-% Replace the author field with agreed group names before submission.
-% To show notes: replace "hide notes" below with "show notes" and recompile.
-% The figures and numerical macros are shared with the checked report.
-% If main.Rmd changes, refresh report inputs and reconcile slide prose/tables.
+\documentclass[t,aspectratio=169,12pt]{beamer}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern,amsmath,amssymb,booktabs,graphicx,array}
@@ -14,123 +7,147 @@
 \definecolor{teal}{HTML}{00857D}
 \definecolor{gray}{HTML}{64737C}
 \definecolor{ink}{HTML}{243945}
+\definecolor{mist}{HTML}{EFF5F7}
 \setbeamercolor{normal text}{fg=ink,bg=white}
 \setbeamercolor{structure}{fg=teal}
 \setbeamercolor{frametitle}{fg=navy}
 \setbeamercolor{title}{fg=navy}
 \setbeamercolor{alerted text}{fg=teal}
+\setbeamercolor{metric}{fg=ink,bg=mist}
+\setbeamercolor{block title}{fg=navy,bg=mist}
+\setbeamercolor{block body}{fg=ink,bg=white}
+\setbeamerfont{block title}{size=\normalsize,series=\bfseries}
 \setbeamerfont{title}{size=\fontsize{28}{32}\selectfont,series=\bfseries}
-\setbeamerfont{frametitle}{size=\fontsize{21}{24}\selectfont,series=\bfseries}
+\setbeamerfont{frametitle}{size=\fontsize{19}{22}\selectfont,series=\bfseries}
 \setbeamersize{text margin left=8mm,text margin right=8mm}
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{itemize item}{\color{teal}\small\textbullet}
-\setbeamertemplate{bibliography item}[text]
-\setbeameroption{hide notes}
 \pdfstringdefDisableCommands{\def\translate#1{#1}}
 \newif\ifbackup
 \backupfalse
-\setbeamertemplate{footline}{%
-  \begin{beamercolorbox}[wd=\paperwidth,ht=4mm,dp=2.5mm,leftskip=8mm,rightskip=8mm]{normal text}
-  \color{gray}\scriptsize Geneva temperature trends\hfill
-  \ifbackup Backup \insertframenumber\else\insertframenumber/10\fi
-  \end{beamercolorbox}}
+
+\setbeamertemplate{frametitle}[default][left]
+\setbeamertemplate{footline}{
+  \begin{beamercolorbox}[wd=\paperwidth,ht=3.5mm,dp=2mm,leftskip=8mm,rightskip=8mm]{normal text}
+  \color{gray}\fontsize{7.5}{9}\selectfont
+  \ifbackup Supporting material\else\insertsectionhead\fi
+  \hfill
+  \ifbackup\insertframenumber\else\insertframenumber/10\fi
+  \end{beamercolorbox}
+}
+\newcommand{\metric}[3]{
+  \begin{beamercolorbox}[wd=\linewidth,sep=.8mm,rounded=true]{metric}
+  {\fontsize{7}{8}\selectfont\color{gray}#1\par}
+  \vspace{.4mm}
+  {\fontsize{16}{18}\selectfont\bfseries\color{navy}#2\par}
+  {\fontsize{8}{10}\selectfont #3\par}
+  \end{beamercolorbox}
+}
 \newcommand{\degC}{\ensuremath{^{\circ}\mathrm C}}
 \newcommand{\source}[1]{\par\vspace{1.5mm}{\fontsize{8}{9.5}\selectfont\color{gray}#1\par}}
-\newcommand{\point}[1]{\par\vspace{2mm}{\color{teal}\bfseries #1\par}}
+\newcommand{\point}[1]{\par\vspace{1mm}{\small\color{teal}\bfseries #1\par}}
 \graphicspath{{report/figures/}}
 \input{report/tables/numbers.tex}
 \title{Temperature trends\texorpdfstring{\\}{ }in Geneva}
 \subtitle{Linear trends, structural change and bootstrap inference}
-\author{Computational Methods in Econometrics}
+\author{\texorpdfstring{Bobo Wen \quad Ernest Terjyan\\Trân Thái Bao \quad Santonio Pham}{Bobo Wen, Ernest Terjyan, Trân Thái Bao, Santonio Pham}}
 \institute{Vrije Universiteit Amsterdam}
 \date{2026--2027}
 
 \begin{document}
 
-% MAIN 1: 25 seconds
 \begin{frame}[plain]
-\vspace{7mm}
-{\usebeamerfont{title}\color{navy}Temperature trends\par in Geneva\par}
 \vspace{5mm}
-{\large Linear trends, structural change\par and bootstrap inference\par}
-\vfill
-\insertauthor\par
-{\small Vrije Universiteit Amsterdam\par Academic year 2026--2027}\par
-\vspace{3mm}
-{\color{gray}\small Station08\quad \FirstYear--\LastYear\quad \Nobs\ observed years}
+{\small\color{gray}Computational Methods in Econometrics\par}
+\vspace{5mm}
+{\usebeamerfont{title}\color{navy}Temperature trends\par in Geneva\par}
 \vspace{4mm}
-\note{Suggested time: 25 seconds. We ask whether Geneva's record shows a sustained temperature trend, whether one slope describes it adequately, and how dependence changes inference about a possible change in slope. The analysis retains every supplied observation. The talk follows the empirical diagnostics, the bootstrap comparison and the simulation study. The assignment handout motivates this sequence.}
-\end{frame}
-
-% MAIN 2: 60 seconds
-\begin{frame}{Geneva's record contains a 29-year gap}
-\begin{columns}[T,onlytextwidth]
-\column{.70\textwidth}
-\includegraphics[width=\linewidth]{temperature_fits.pdf}
-\column{.27\textwidth}
+{\large Does one constant trend describe the record?\par}
+{\small Linear diagnostics, structural change and bootstrap inference\par}
+\vspace{4mm}
+{\color{teal}\rule{.15\linewidth}{1pt}\par}
+\vfill
+{\small\insertauthor\par}
+\vspace{2mm}
+{\small\color{gray}Vrije Universiteit Amsterdam\quad 2026--2027\par}
 \vspace{3mm}
-\textbf{226 observations}\par
-1753--2013\par\vspace{4mm}
-\textbf{35 missing years}\par
-Five gaps\par\vspace{4mm}
-\textbf{1981--2009}\par
-Largest gap\par\vspace{4mm}
-All observations retained.\par No interpolation.
-\end{columns}
-\source{Geneva, Switzerland. GHCN-M v4 QCF adjusted series. Annual means require at least ten valid months \cite{menne,stationdata}. Fitted curves across gaps are model-implied.}
-\note{Suggested time: 60 seconds. The source metadata identifies Geneva at 46.20 degrees north, 6.15 east and 405 metres elevation. This is the quality-controlled, homogenisation-adjusted series. All 226 temperatures remain, including the final four in 2010--2013. There are no missing cells in the CSV, but 35 absent calendar years. In particular 1980 and 2010 are thirty years apart. The plot shows the two fits that we compare in the talk. Observed lines stop at gaps, while fitted curves express the models. Neither interpolation nor the four final values can reveal the missing trajectory. Source: supplied Station08 metadata and Menne et al. (2018).}
+{\small\color{gray}Station08\quad \FirstYear--\LastYear\quad \Nobs\ observations\par}
+\vspace{3mm}
 \end{frame}
 
-% MAIN 3: 65 seconds
-\begin{frame}{The linear fit leaves residual dependence}
-\[
- x_i=\frac{\mathrm{Year}_i-1850}{10},\qquad
- \widehat y_i=\LinearIntercept+\LinearSlope x_i
-\]
-\vspace{1mm}
-\begin{center}\renewcommand{\arraystretch}{1.25}
-\begin{tabular}{lrr}
-\toprule Diagnostic & Statistic & $p$-value\\\midrule
-Durbin--Watson & \DWstat & \DWp\\
-Breusch--Pagan & \BPstat & \BPp\\\bottomrule
-\end{tabular}\end{center}
-\begin{itemize}
-\item DW lies below the lower simulated cutoff, \DWLower.
-\item BP does not reject against a linear variance trend.
-\item Dependence qualifies conventional OLS and BP inference.
-\end{itemize}
-\source{OLS slope: \degC\ per decade. Primary DW uses observation adjacency and 9,999 iid Gaussian-null simulations. BP uses the nominal $\chi^2_1$ reference \cite{dufour,koenker,bp}.}
-\note{Suggested time: 65 seconds. Centring at 1850 makes the intercept fitted temperature in that year. The slope is about 0.034 degrees per decade and is descriptive at this stage. The primary DW statistic follows the assignment's observation-adjacent definition. Both its p-value and the separately calibrated calendar-adjacent sensitivity p-value equal 0.0002. Type-6 cutoffs and strict rejection match the rank rule under the iid Gaussian null. Rejection can reflect residual dependence or an inadequate mean. BP's 0.5183 does not prove constant variance: it targets a linear trend in squared residuals and its usual p-value does not adjust for dependence. Sources: Dufour and Khalaf (2001), Koenker (1981), Breusch and Pagan (1979).}
-\end{frame}
-
-% MAIN 4: 60 seconds
-\begin{frame}{The best-fitting slope change is in 1851}
-\[
- y_i=\alpha+\beta x_i+\delta(x_i-x_k)_++\varepsilon_i
-\]
+\section{Data and diagnostics}
+\begin{frame}{A long record with substantial missing years}
 \begin{columns}[T,onlytextwidth]
-\column{.64\textwidth}
-\includegraphics[width=\linewidth]{break_profile.pdf}
-\column{.33\textwidth}
-15\% trimming by\par observation count\par\vspace{2mm}
-Candidates: 1786--1945\par\vspace{2mm}
-\textbf{Before:} \PreSlope\par
-\textbf{After:} $+\PostSlope$\par
-{\small \degC\ per decade}\par\vspace{2mm}
-RSS falls by 12.5\%.
+\column{.74\textwidth}
+\includegraphics[width=\linewidth,height=4.55cm,keepaspectratio]{exploratory_series.pdf}
+\column{.23\textwidth}
+\metric{OBSERVED YEARS}{\Nobs}{\FirstYear--\LastYear}
+\vspace{2mm}
+\metric{MISSING YEARS}{\NMissing}{Across five gaps}
+\vspace{2mm}
+\metric{LONGEST GAP}{29 years}{1981--2009}
 \end{columns}
-\source{$F_T=RSS_0-\min_k RSS_k=\BreakStat$\,\degC$^2$. Searching the date requires bootstrap calibration \cite{andrews}.}
-\note{Suggested time: 60 seconds. The positive-part hinge permits a change in slope while enforcing continuity. The pre-break slope is beta and the later slope is beta plus delta. We trim counts rather than calendar duration because the long gap would otherwise leave very few observations in some candidate regimes. The 159 candidates run from positions 34 through 192. The minimum is at position 99, year 1851. The statistic is the raw RSS reduction specified in the assignment. Under no break the date is unidentified, so searching all these dates invalidates a usual fixed-date test. The selected date is descriptive until we calibrate the search. Source: Andrews (1993).}
+\point{All supplied observations retained; no interpolation.}
+\source{Geneva, Switzerland; GHCN-M v4 QCF adjusted series. Annual means require at least ten valid months. Lines stop across gaps.}
 \end{frame}
 
-% MAIN 5: 75 seconds
-\begin{frame}{Bootstrap error generators}
+\begin{frame}{The linear trend leaves dependent residuals}
+\begin{columns}[T,onlytextwidth]
+\column{.53\textwidth}
+\centering
+\includegraphics[width=\linewidth,height=2.4cm,keepaspectratio]{resid-time-plot-1.png}\par
+\vspace{1mm}
+\includegraphics[width=\linewidth,height=2.0cm,keepaspectratio]{acf-compare-1.png}
+\column{.44\textwidth}
+\footnotesize
+\(x_i=(\mathrm{Year}_i-1850)/10\)\par\vspace{2mm}
+\(\widehat y_i=\LinearIntercept+\LinearSlope x_i\)\par
+Slope: \degC\ per decade.\par
+Intercept: fitted temperature in 1850.\par\vspace{2mm}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lrr}
+\toprule Diagnostic & Statistic & $p$\\\midrule
+DW & \DWstat & \DWp\\
+BP & \BPstat & \BPp\\\bottomrule
+\end{tabular}\par\vspace{2mm}
+\textbf{DW rejection region}\par
+\(d<\DWLower\) or \(d>\DWUpper\).\par\vspace{2mm}
+BP does not reject a linear variance trend.
+\end{columns}
+\point{Residual dependence motivates the dependent wild bootstrap.}
+\source{DW: 9,999 iid Gaussian-null draws, separate two-sided cutoffs. BP: $nR^2$ from $e_i^2$ on $x_i$, nominal $\chi^2_1$ reference. ACF bands are descriptive.}
+
+\end{frame}
+
+\section{Structural change and bootstrap inference}
+\begin{frame}{A continuous slope change fits best in 1851}
+{\small\(y_i=\alpha+\beta x_i+\delta(x_i-x_k)_++\varepsilon_i\): a slope change with no level jump.\par}
+\vspace{.7mm}
+\begin{columns}[T,onlytextwidth]
+\column{.51\textwidth}
+\centering\small Fitted trends\par
+\includegraphics[width=\linewidth,height=2.65cm,keepaspectratio]{temperature_fits.pdf}
+\column{.46\textwidth}
+\centering\small Complete date search\par
+\includegraphics[width=\linewidth,height=2.65cm,keepaspectratio]{break_profile.pdf}
+\end{columns}
+\vspace{.7mm}
+\begin{columns}[T,onlytextwidth]
+\column{.31\textwidth}\metric{BEFORE THE BREAK}{\PreSlope}{\degC\ per decade}
+\column{.31\textwidth}\metric{CHANGE IN SLOPE}{$+\DeltaSlope$}{\degC\ per decade}
+\column{.31\textwidth}\metric{AFTER THE BREAK}{$+\PostSlope$}{\degC\ per decade}
+\end{columns}
+\point{A better fit alone does not establish a structural break.}
+\source{OLS at each date; 15\% observation-count trimming, candidates 1786--1945. $H_0:\delta=0$; $F_T=RSS_0-\min_k RSS_k=\BreakStat$\,\degC$^2$. RSS reduction: 12.53\%.}
+\end{frame}
+
+\begin{frame}{Bootstrap choices follow the diagnostics}
 \begin{center}\small\renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lll}
 \toprule \textbf{Method} & \textbf{Error draw} & \textbf{Preserves}\\\midrule
 IID residual & Resample residuals & Common distribution\\
 Independent wild & Residual $\times$ independent sign & Local residual scale\\
-Dependent wild & Residual $\times$ correlated weight & Scale and dependence\\\bottomrule
+Dependent wild & Residual $\times$ correlated weight & Scale; approximate dependence\\\bottomrule
 \end{tabular}\end{center}
 \[
 \operatorname{Corr}(w_i,w_j)=\exp(-|s_i-s_j|/\ell),\qquad \ell=6\text{ years}
@@ -139,25 +156,21 @@ Dependent wild & Residual $\times$ correlated weight & Scale and dependence\\\bo
 \item Generate under the fitted linear null using its residuals.
 \item Repeat the full date search in every bootstrap sample.
 \end{itemize}
-\source{9,999 draws per test. Primary DWB bandwidth: six years. Sensitivities: three and twelve years \cite{wu,liu,shao,friedrich}.}
-\note{Suggested time: 75 seconds. IID resampling destroys time dependence and location-specific scale. Independent wild weights preserve each residual's squared scale but remove cross-covariances. DWB uses mean-zero Gaussian weights whose correlation falls with actual calendar distance, including the gaps. At bandwidth six, one-year weight correlation is about 0.85 and a thirty-year gap has correlation about 0.007. These are chosen multiplier correlations rather than estimates of error autocorrelation. All testing samples target the fitted linear null and use its centred, rescaled residuals. Restricted residuals may contain an unmodelled kink, so neither exact size nor monotonic p-values in bandwidth follows automatically. Sources: Wu (1986), Liu (1988), Shao (2010), Friedrich et al. (2020).}
+\source{9,999 draws per test. Primary DWB: $\ell=\mathrm{round}(226^{1/3})=6$ calendar years, a heuristic. Sensitivity grid: 2--15 years.}
+
 \end{frame}
 
-% MAIN 6: 70 seconds
-\begin{frame}{Break evidence depends on the bandwidth}
-\begin{center}\small\renewcommand{\arraystretch}{1.3}
-\input{report/tables/bootstrap_table.tex}
-\end{center}
-\point{The primary DWB test rejects, but $\ell=12$ does not.}
-\vspace{2mm}
-Both independent methods reach the simulation floor.\par
-Equal minimum p-values cannot resolve smaller tail differences.
-\source{RSS gain and critical values in \degC$^2$. Upper-tail p-value: $(1+\text{exceedances})/(B+1)$.}
-\note{Suggested time: 70 seconds. The primary DWB p-value is 0.0331, moderate evidence rather than an overwhelming result. At three years it is 0.0206; at twelve it becomes 0.0541. The sequence rises in these runs but need not rise for every dataset. Its sensitivity is larger than the Monte Carlo standard error of roughly 0.0018 at the primary estimate. IID and independent wild each have zero exceedances out of 9,999, giving 0.0001 with the plus-one rule. That is the available resolution, not a zero probability or a confidence bound. Their equality does not establish that heteroskedasticity is unimportant. The simulation will explain why their smaller p-values are less persuasive when dependence is present.}
+\begin{frame}{Break evidence changes with the bandwidth}
+\centering
+\includegraphics[width=.96\linewidth,height=4.25cm,keepaspectratio]{bandwidth_sensitivity.pdf}
+\par\raggedright
+{\small IID / independent wild: $p=0.0001$; primary DWB ($\ell=6$): $p=0.0331$.\par}
+\point{At 5\%: bandwidths 2--11 reject; 12--15 do not.}
+\source{9,999 draws per bandwidth, full break search in each draw. Dashed line: 5\%; dotted line: primary $\ell=6$. Bars: 95\% Wilson intervals for Monte Carlo tail probabilities at fixed bandwidths.}
+
 \end{frame}
 
-% MAIN 7: 60 seconds
-\begin{frame}{Both post-break intervals exclude zero}
+\begin{frame}{The later fitted slope is positive}
 \begin{columns}[T,onlytextwidth]
 \column{.68\textwidth}
 \includegraphics[width=\linewidth]{slope_intervals.pdf}
@@ -167,13 +180,12 @@ Equal minimum p-values cannot resolve smaller tail differences.
 \textbf{Post-break}\par Both intervals exclude zero.
 \end{columns}
 \vspace{3mm}
-Generate under the fitted broken alternative.\par
-Reselect the date in all 4,999 draws.
-\source{DWB bandwidth six. Percentile-t intervals use calendar-time HAC studentisation \cite{davison,newey}. Interpretation is conditional on the broken-trend specification.}
-\note{Suggested time: 60 seconds. Confidence intervals answer a different question from the break test. We now generate around the fitted alternative and use its residuals. Every sample reselects the date, so the estimates incorporate date variation. Percentile intervals use slope quantiles; percentile-t intervals studentise using a newly calculated calendar HAC standard error in every draw. The pre-break point estimate is negative, but both intervals contain zero. Both later intervals are positive, conditional on this fitted specification. They do not independently establish break existence. The local date Jacobian and weak identification make coverage an approximation, and our simulation does not study coverage. Sources: Davison and Hinkley (1997), Newey and West (1987).}
+{\small Generate under the fitted broken alternative; reselect the date in all 4,999 draws.\par}
+\source{DWB bandwidth six. Percentile-t intervals use calendar-time HAC studentisation. Both interval types are conditional on the broken-trend specification; they do not independently test for a break.}
+
 \end{frame}
 
-% MAIN 8: 50 seconds
+\section{Simulation study}
 \begin{frame}{Eight scenarios assess size and power}
 \[
  y_t=9.5-0.05x_t+\delta(x_t-x_{113})_++\varepsilon_t,
@@ -191,40 +203,145 @@ Innovation scale $\sigma_t$ & Constant or increasing\\\bottomrule
 \item Each dataset has 226 consecutive annual observations.
 \item Gaussian innovations and a central break at position 113.
 \end{itemize}
-\source{8,000 datasets and 24,000 tests. Innovation scale is calibrated to \SigmaHat\,\degC. The experiment does not reproduce the observed missing-year pattern.}
-\note{Suggested time: 50 seconds. Delta zero lets us measure false rejection, or size, against a nominal five percent. Delta 0.14 gives power for a reasonably strong kink similar in magnitude to the empirical estimate. We cross dependence and increasing innovation scale, which gives eight scenarios. Increasing scales run from 0.5 to 1.5 and are normalised to the same mean innovation variance. With rho 0.4, marginal error variance increases because innovation variance is held fixed. All three methods test the same simulated datasets. Replication seeds depend on scenario and dataset index, so changing worker scheduling does not change the samples. Simulated x is centred consecutive time in decades.}
+\source{8,000 datasets and 24,000 tests. Innovation scale is calibrated to \SigmaHat\,\degC. DWB uses $\ell=6$. Master seed: 20260926. $x_t=(t-\bar t)/10$; consecutive years do not reproduce the empirical gaps.}
+
 \end{frame}
 
-% MAIN 9: 80 seconds
-\begin{frame}{Independent methods over-reject under dependence}
-\centering\includegraphics[width=.94\linewidth,height=4.65cm,keepaspectratio]{simulation_results.pdf}
-\par\vspace{1mm}\raggedright
-\textbf{Under AR(0.4):} independent methods have size 26.5--32.2\%.\par
-\textbf{DWB:} size 2.1--3.5\% across scenarios.
-\source{95\% Wilson intervals. Panel scales differ. DWB power under dependence: 74.6--78.5\%.}
-\note{Suggested time: 80 seconds. The left panel is the key diagnostic of test reliability. Under independence and constant scale, IID and wild sizes are 4.1 and 4.3 percent. Heteroskedasticity alone raises IID size to 8.8 percent while wild stays at 5.4. Serial correlation is more damaging: independent methods reject between 26.5 and 32.2 percent in no-break data. DWB avoids that over-rejection but is conservative in these scenarios, at 2.1 to 3.5 percent. Its power is high under independence but falls to 74.6 to 78.5 percent under AR errors. The independent methods' higher apparent power cannot be treated as better performance when their size is inflated. Wilson intervals measure Monte Carlo sampling uncertainty. These designs do not prove that the empirical DWB p-value is conservative.}
+\begin{frame}{Ignoring dependence inflates false rejection}
+\centering\includegraphics[width=.94\linewidth,height=4.1cm,keepaspectratio]{simulation_results.pdf}
+\par\raggedright\vspace{1mm}
+\begin{columns}[T,onlytextwidth]
+\column{.48\textwidth}
+\metric{IID / INDEPENDENT WILD SIZE}{26.5--32.2\%}{Under AR(0.4); nominal size is 5\%}
+\column{.48\textwidth}
+\metric{DWB SIZE}{2.1--3.5\%}{Across scenarios: conservative here}
+\end{columns}
+\source{95\% Wilson intervals; panel scales differ. DWB power under AR(0.4): 74.6--78.5\%. Higher apparent power does not compensate for inflated size. These designs do not establish empirical conservatism.}
 \end{frame}
 
-% MAIN 10: 55 seconds
-\begin{frame}{Qualified evidence of a changing trend}
-\begin{itemize}
-\setlength{\itemsep}{4mm}
-\item The fitted later slope is $+\PostSlope$\,\degC\ per decade.\par
-Both interval constructions exclude zero.
-\item The best-fitting change is near \BreakYear.\par
-Its test conclusion is sensitive to the dependence bandwidth.
-\item The simulation supports accounting for dependence.\par
-DWB remains an approximation with finite-sample limitations.
-\end{itemize}
-\vspace{3mm}
-\point{The missing decades and model assumptions limit stronger claims.}
-\source{The later slope averages 1851--2013. It is not a recent-decade rate. A single station and a fitted breakpoint cannot establish a regional transition or physical cause.}
-\note{Suggested time: 55 seconds. Return to the research question. The record supports a positive later fitted trend, with intervals that exclude zero under the broken-trend specification. The early slope's uncertainty includes zero. The descriptive curve changes near 1851, but the evidence for a statistically identified break weakens at the longer bandwidth. Dependence matters both in the empirical diagnostics and the simulation. Finish by separating what we estimate from what we do not observe: the 1981--2009 trajectory is unknown, this is one station, and neither a breakpoint nor homogenisation establishes a physical cause. The main talk ends here. Technical backup slides are for questions.}
+\section{Conclusions}
+\begin{frame}{Later warming, qualified evidence of a break}
+\vspace{2mm}
+\begin{block}{A positive later fitted trend}
+\small $+\PostSlope$\,\degC\ per decade; both interval constructions exclude zero.\par
+The early slope's intervals include zero.
+\end{block}
+\begin{block}{Break evidence depends on the bandwidth}
+\small Best-fitting date: \BreakYear. The primary DWB test rejects at 5\%;\par
+bandwidths 12--15 do not. The date remains an uncertain model feature.
+\end{block}
+\begin{block}{Dependence matters for inference}
+\small Independent methods over-reject in the AR scenarios.\par
+DWB avoids that inflation, but remains an approximation.
+\end{block}
+\source{The later slope averages 1851--2013, not recent decades. Missing years, one station and model assumptions limit broader or causal claims.}
 \end{frame}
 
 \appendix
 \backuptrue
 \setcounter{framenumber}{0}
+
+\begin{frame}{Self-reflection: strengths and limitations}
+\begin{itemize}
+\setlength{\itemsep}{3mm}
+\item \textbf{What worked:} full sample, complete break reselection,\par
+three bootstrap methods and reproducible numerical checks.
+\item \textbf{What changed our conclusion:} residual dependence\par
+and bandwidth-sensitive break evidence.
+\item \textbf{Main limitations:} missing decades, one station,\par
+a single-break model and a heuristic bandwidth.
+\item \textbf{Next improvement:} evaluate interval coverage and\par
+bandwidth choices under a wider range of simulated dependence.
+\end{itemize}
+\source{Two-minute self-reflection before Q\&A. Interval coverage and wider bandwidth experiments are possible extensions; they were not performed.}
+
+\end{frame}
+
+\begin{frame}{Linear residual variance and marginal shape}
+\begin{columns}[T,onlytextwidth]
+\column{.60\textwidth}
+\centering\small Squared residuals over time\par
+\includegraphics[width=\linewidth,height=3.5cm,keepaspectratio]{variance-plot-1.png}
+\column{.37\textwidth}
+\centering\small Normal QQ comparison\par
+\includegraphics[width=\linewidth,height=3.5cm,keepaspectratio]{qq-plot-1.png}
+\end{columns}
+\vspace{2mm}
+{\small Local variance changes may escape a linear variance test.\par
+The QQ centre is broadly linear, with tail departures.\par}
+\source{The variance smooth across the gap lacks observed support. QQ assesses marginal shape; it cannot establish independence or validate the Gaussian reference model.}
+
+\end{frame}
+
+\begin{frame}{DW and BP use different references}
+\begin{columns}[T,onlytextwidth]
+\column{.48\textwidth}
+\small\textbf{DW Monte Carlo}\par\vspace{2mm}
+Specify iid Gaussian errors and a fixed design $X$.\par
+\[e^{(b)}=M_Xz^{(b)},\quad z^{(b)}\sim N(0,I_n).\]
+Coefficients disappear under projection; the error scale cancels in DW.\par\vspace{2mm}
+Simulate separate lower and upper tails.
+\column{.48\textwidth}
+\small\textbf{BP asymptotic reference}\par\vspace{2mm}
+Regress $e_i^2$ on $1,x_i$; compute $BP=nR^2$.\par
+\[BP\ \overset{a}{\sim}\ \chi^2_1\quad\text{under regularity conditions}.\]
+Homoskedasticity alone does not specify the finite-sample distribution: error shape and dependence matter.
+\end{columns}
+\vspace{4mm}
+\point{Gaussian simulation of BP is possible under a fully specified null.}
+\source{It is not automatically valid for the broader homoskedasticity null. Squared residuals do not make simulation impossible; additional distributional assumptions are the issue.}
+
+\end{frame}
+
+\begin{frame}{Generate each testing sample under the null}
+\small
+\[\widetilde e_i=(e_{0i}-\bar e_0)\sqrt{n/(n-2)},\qquad
+y_i^*=\widehat y_{0i}+e_i^*.\]
+\begin{itemize}
+\item \textbf{IID:} draw $e_i^*$ independently with replacement from $\{\widetilde e_j\}$.
+\item \textbf{Independent wild:} $e_i^*=\widetilde e_iw_i$, independent equiprobable signs $w_i=\pm1$.
+\item \textbf{DWB:} $e_i^*=\widetilde e_iw_i$, with $w_1\sim N(0,1)$ and
+\end{itemize}
+\vspace{-2mm}
+\[a_i=e^{-(s_i-s_{i-1})/\ell},\quad
+w_i=a_iw_{i-1}+\sqrt{1-a_i^2}z_i,\quad z_i\overset{\mathrm{iid}}\sim N(0,1).\]
+\vspace{-2mm}
+\[F_T^*=RSS_0^*-\min_k RSS_k^*,\qquad
+p=\frac{1+\sum_b1\{F_{T,b}^*\geq F_T\}}{B+1}.\]
+\source{Refit the null and all candidate alternatives in every draw; $B=9,999$. Type-1 95\% critical value, reject for $p\leq0.05$. DWB preserves residual scale and calendar-distance multiplier dependence.}
+
+\end{frame}
+
+\begin{frame}{Break-test comparison and critical values}
+\begin{center}\small\renewcommand{\arraystretch}{1.3}
+\input{report/tables/bootstrap_table.tex}
+\end{center}
+\point{Primary DWB: $p=0.0331$; twelve-year DWB: $p=0.0541$.}
+\source{$F_T=\BreakStat$\,\degC$^2$; $B=9,999$ per row. Critical values are in \degC$^2$. Independent methods have zero exceedances; $p=0.0001$ is the simulation floor, not a zero probability.}
+
+\end{frame}
+
+\begin{frame}{Reported slope intervals and studentisation}
+\begin{center}\footnotesize\renewcommand{\arraystretch}{1.25}
+\input{report/tables/ci_table.tex}
+\end{center}
+\vspace{-2mm}
+{\small
+\[\mathrm{Percentile}:\quad[q_{.025}(\widehat\theta^*),q_{.975}(\widehat\theta^*)],\]
+\[t^*=(\widehat\theta^*-\widehat\theta)/s^*,\qquad
+\mathrm{Percentile}\text{-}t:\quad[\widehat\theta-q_{.975}(t^*)s,\widehat\theta-q_{.025}(t^*)s].\]
+}
+\source{Nominal 95\% intervals, \degC\ per decade. DWB $\ell=6$, 4,999 draws under the fitted alternative, full date reselection, type-7 quantiles; calendar HAC standard errors recomputed in every draw.}
+
+\end{frame}
+
+\begin{frame}{All eight simulation configurations}
+\begin{center}\footnotesize\renewcommand{\arraystretch}{1.2}
+\input{report/tables/simulation_table.tex}
+\end{center}
+\source{Entries are rejection percentages; size uses $\delta=0$, power uses $\delta=0.14$. $M=1,000$, $B=499$, DWB $\ell=6$. Dataset seed: $20260926+100000c+m$. Same datasets for all three methods.}
+
+\end{frame}
 
 \begin{frame}{DW definitions and calibration}
 \[
@@ -242,11 +359,11 @@ Calendar adjacency & 220 & 1.3865 & 1.7106 & 2.2211\\\bottomrule
 \item Type-6 cutoffs are order statistics 250 and 9,750.
 \item Strict rejection outside cutoffs agrees with $p\leq0.05$.
 \end{itemize}
-\source{Both two-sided p-values are 0.0002. Exact rank size is conditional on the continuous iid Gaussian null and fixed design \cite{dufour}.}
-\note{Use if asked about the gap-adjusted DW statistic. Restricting pairs defines a different statistic, so it needs its own reference distribution. The assignment's observation-adjacent definition remains primary. The p-value doubles the smaller plus-one tail probability and caps at one. A pivotal statistic under the Gaussian null need not have the same distribution under non-Gaussian independent errors. BP can also be calibrated by simulation under a fully specified iid Gaussian null; squared residuals do not make simulation impossible.}
+\source{Both two-sided p-values are 0.0002. Exact rank size is conditional on the continuous iid Gaussian null and fixed design.}
+
 \end{frame}
 
-\begin{frame}{Testing and interval bootstraps target different models}
+\begin{frame}{Testing and intervals use different models}
 \begin{columns}[T,onlytextwidth]
 \column{.48\textwidth}
 \textbf{Break test}\par\vspace{2mm}
@@ -265,7 +382,7 @@ Reselect the date and recompute slopes and standard errors.
  K_{ij}=\max\{1-|s_i-s_j|/7,0\}
 \]
 \source{Studentisation includes the local date direction and uses correction $n/(n-4)$. A rescaled indicator replaces the fourth column for numerical stability when the kink is nonzero. Weak identification can limit coverage.}
-\note{The residual scaling and the HAC correction answer different questions. Three linear coefficients determine the alternative residual scale, while the local Jacobian includes the estimated date as a fourth direction. The code rescales that derivative to an indicator. Calendar matching includes only observed pairs at one through six years. Percentile-t intervals reverse the bootstrap t quantiles before subtracting from the observed slope. The source's independent checks reconstruct both interval types from all stored draws. See CODE_GUIDE.md, chunks 30--32.}
+
 \end{frame}
 
 \begin{frame}{The main shape persists in reduced samples}
@@ -282,41 +399,26 @@ End in 1980 & 222 & 1850 & -0.0477 & 0.0776\\\bottomrule
 \item Primary inference retains all 226 observations.
 \end{itemize}
 \source{Slopes are \degC\ per decade. Alternative-bootstrap date percentiles are 1793 and 1896, with 1.54\% of selections at boundaries. These do not constitute a calibrated break-date confidence set.}
-\note{The coldest observation occurs at the estimated full-sample break, making the first sensitivity useful. Removing it shifts the selected year by only two years. Dropping the four post-gap observations lowers the later slope but preserves the fitted direction. These checks do not establish robustness of p-values, since we do not report new inferential calibrations for the reduced samples. Date uncertainty in the alternative bootstrap is wide and explains some asymmetry in the slope intervals.}
+
 \end{frame}
 
 \begin{frame}{Dependence remains after fitting the break}
 \begin{columns}[T,onlytextwidth]
 \column{.69\textwidth}
-\includegraphics[width=\linewidth,height=5.8cm,keepaspectratio]{diagnostics_broken.pdf}
+\includegraphics[width=\linewidth,height=5.4cm,keepaspectratio]{diagnostics_broken.pdf}
 \column{.28\textwidth}
-\vspace{4mm}
-ACF(1):\par 0.290 to 0.194\par\vspace{4mm}
-DW:\par 1.415 to 1.613\par\vspace{4mm}
-RSS reduction:\par 12.53\%\par\vspace{4mm}
+\small
+\vspace{2mm}
+ACF(1):\par 0.290 to 0.194\par\vspace{2mm}
+DW:\par 1.415 to 1.613\par\vspace{2mm}
+RMSE:\par 0.657 to 0.614\par\vspace{3mm}
+$R^2$:\par 0.105 to 0.217\par\vspace{3mm}
 Dependence remains.
 \end{columns}
 \source{Observation lags in the ACF. Selecting a date changes the design, so the linear-model DW critical values do not calibrate a test here.}
-\note{The broken mean reduces low-frequency structure, but it does not whiten the residuals. This supports keeping dependence in the interval procedure. The selected model's BP p-value is about 0.209 and remains qualified by the diagnostic's narrow alternative and dependence. In-sample fit measures and a heuristic BIC favour the broken curve, but neither replaces the bootstrap search test.}
-\end{frame}
 
-\begin{frame}[allowframebreaks]{References}
-\scriptsize
-\begin{thebibliography}{99}
-\bibitem{handout} Friedrich, M. (2026). \emph{Investigating Temperature Trends: From Linear Trends to Structural Change}. Computational Methods in Econometrics assignment handout, Vrije Universiteit Amsterdam.
-\bibitem{menne} Menne, M. J., et al. (2018). The Global Historical Climatology Network Monthly Temperature Dataset, Version 4. \emph{Journal of Climate}, 31, 9835--9854. \href{https://doi.org/10.1175/JCLI-D-18-0094.1}{doi:10.1175/JCLI-D-18-0094.1}.
-\bibitem{stationdata} NOAA NCEI. GHCN-M v4, QCF adjusted series. Supplied \texttt{Station08.csv} and \texttt{Station08\_metadata.pdf}. \href{https://doi.org/10.7289/V5XW4GTH}{doi:10.7289/V5XW4GTH}.
-\bibitem{andrews} Andrews, D. W. K. (1993). Tests for parameter instability and structural change with unknown change point. \emph{Econometrica}, 61, 821--856. \href{https://doi.org/10.2307/2951764}{doi:10.2307/2951764}.
-\bibitem{wu} Wu, C. F. J. (1986). Jackknife, bootstrap and other resampling methods in regression analysis. \emph{Annals of Statistics}, 14, 1261--1295. \href{https://doi.org/10.1214/aos/1176350142}{doi:10.1214/aos/1176350142}.
-\bibitem{liu} Liu, R. Y. (1988). Bootstrap procedures under some non-i.i.d. models. \emph{Annals of Statistics}, 16, 1696--1708. \href{https://doi.org/10.1214/aos/1176351062}{doi:10.1214/aos/1176351062}.
-\bibitem{shao} Shao, X. (2010). The dependent wild bootstrap. \emph{JASA}, 105, 218--235. \href{https://doi.org/10.1198/jasa.2009.tm08744}{doi:10.1198/jasa.2009.tm08744}.
-\bibitem{friedrich} Friedrich, M., Smeekes, S., and Urbain, J.-P. (2020). Autoregressive wild bootstrap inference for nonparametric trends. \emph{Journal of Econometrics}, 214, 81--109. \href{https://doi.org/10.1016/j.jeconom.2019.05.006}{doi:10.1016/j.jeconom.2019.05.006}.
-\bibitem{davison} Davison, A. C., and Hinkley, D. V. (1997). \emph{Bootstrap Methods and Their Application}. Cambridge University Press, Chapter 5. \href{https://doi.org/10.1017/CBO9780511802843}{doi:10.1017/CBO9780511802843}.
-\bibitem{newey} Newey, W. K., and West, K. D. (1987). A simple, positive semi-definite, heteroskedasticity and autocorrelation consistent covariance matrix. \emph{Econometrica}, 55, 703--708. \href{https://doi.org/10.2307/1913610}{doi:10.2307/1913610}.
-\bibitem{koenker} Koenker, R. (1981). A note on studentizing a test for heteroscedasticity. \emph{Journal of Econometrics}, 17, 107--112. \href{https://doi.org/10.1016/0304-4076(81)90062-2}{doi:10.1016/0304-4076(81)90062-2}.
-\bibitem{bp} Breusch, T. S., and Pagan, A. R. (1979). A simple test for heteroscedasticity and random coefficient variation. \emph{Econometrica}, 47, 1287--1294. \href{https://doi.org/10.2307/1911963}{doi:10.2307/1911963}.
-\bibitem{dufour} Dufour, J.-M., and Khalaf, L. (2001). Monte Carlo test methods in econometrics. In \emph{A Companion to Theoretical Econometrics}, Chapter 23, 494--519. \href{https://jeanmariedufour.github.io/Dufour_Khalaf_1998_MCTCompanion_W.pdf}{Author manuscript}.
-\end{thebibliography}
+\vspace{1mm}
+{\tiny AI assistance supported code debugging, writing clarity and presentation formatting; see the report for the project acknowledgement.\par}
 \end{frame}
 
 \end{document}
